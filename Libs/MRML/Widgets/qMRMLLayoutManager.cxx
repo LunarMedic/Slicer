@@ -33,6 +33,7 @@
 #include <qMRMLPlotView.h>
 #include <qMRMLPlotWidget.h>
 #include <qMRMLThreeDView.h>
+//#include <qMRMLVRView.h>
 #include <qMRMLThreeDWidget.h>
 
 // MRMLLogic includes
