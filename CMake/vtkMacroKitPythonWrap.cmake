@@ -27,11 +27,18 @@
 # Ignores VTK dependencies.
 macro(_get_dependencies_recurse module_name dep)
   string(REGEX REPLACE "(.+)PythonD\$" "\\1" _dep_base ${dep})
-  list(APPEND _${module_name}_wrap_depends ${_dep_base})
+  if(${_dep_base}_WRAP_HIERARCHY_FILE)
+    list(APPEND _${module_name}_wrap_depends ${_dep_base})
+  endif()
 
   set(_wrap_include_dirs ${${_dep_base}_INCLUDE_DIRS})
   if(_wrap_include_dirs)
     list(APPEND _${module_name}_wrap_include_dirs ${_wrap_include_dirs})
+  endif()
+
+  list(FIND ${_dep_base}_WRAP_DEPENDS "${_dep_base}" _index)
+  if(NOT _index EQUAL -1)
+    message(FATAL_ERROR "${_dep_base} can NOT depends on itself [${_dep_base}_WRAP_DEPENDS: ${${_dep_base}_WRAP_DEPENDS}]")
   endif()
 
   foreach(_dep ${${_dep_base}_WRAP_DEPENDS})
@@ -120,6 +127,8 @@ macro(vtkMacroKitPythonWrap)
       set(_wrap_hierarchy_file "${Slicer_BINARY_DIR}/${MY_KIT_NAME}Hierarchy.txt")
       set(_wrap_hierarchy_stamp_file ${CMAKE_CURRENT_BINARY_DIR}/${MY_KIT_NAME}Hierarchy.stamp.txt)
       set(${MY_KIT_NAME}_WRAP_HIERARCHY_FILE "${_wrap_hierarchy_file}" CACHE INTERNAL "${MY_KIT_NAME} wrap hierarchy file" FORCE)
+
+      set_property(GLOBAL APPEND PROPERTY SLICER_WRAP_HIERARCHY_TARGETS ${MY_KIT_NAME})
 
       # Set variables for vtk_wrap_python3:
       #   - KIT_HIERARCHY_FILE

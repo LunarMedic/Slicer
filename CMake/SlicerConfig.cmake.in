@@ -223,6 +223,9 @@ set(Slicer_VTK_VERSION_MAJOR "@Slicer_VTK_VERSION_MAJOR@")
 # Slicer include directories for module Widget
 @Slicer_INCLUDE_MODULE_WIDGET_DIRS_CONFIG@
 
+# Slicer VTK wrap hierarchy files
+@Slicer_WRAP_HIERARCHY_FILES_CONFIG@
+
 # Slicer Libs include file directories.
 set(Slicer_Libs_INCLUDE_DIRS "@Slicer_Libs_INCLUDE_DIRS_CONFIG@")
 
@@ -267,6 +270,9 @@ set(vtkAddon_INCLUDE_DIRS "@vtkAddon_INCLUDE_DIRS_CONFIG@"
   
 set(vtkITK_INCLUDE_DIRS "@vtkITK_INCLUDE_DIRS_CONFIG@"
   CACHE INTERNAL "vtkITK includes" FORCE)
+
+set(vtkSegmentationCore_INCLUDE_DIRS "@vtkSegmentationCore_INCLUDE_DIRS_CONFIG@"
+  CACHE INTERNAL "vtkSegmentationCore includes" FORCE)
 
 set(vtkTeem_INCLUDE_DIRS "@vtkTeem_INCLUDE_DIRS_CONFIG@"
   CACHE INTERNAL "vtkTeem includes" FORCE)

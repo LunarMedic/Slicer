@@ -96,6 +96,8 @@ public:
 
   /// Set level filter that allows showing only items at a specified level and their parents. Show all items if empty
   Q_INVOKABLE void setLevelFilter(QString &levelFilter);
+  /// Set name filter that allows showing only items containing a specified string (case-insensitive). Show all items if empty
+  Q_INVOKABLE void setNameFilter(QString &nameFilter);
 
   Q_INVOKABLE qMRMLSortFilterSubjectHierarchyProxyModel* sortFilterProxyModel()const;
   Q_INVOKABLE qMRMLSubjectHierarchyModel* model()const;
@@ -158,6 +160,7 @@ public slots:
 
 signals:
   void currentItemChanged(vtkIdType);
+  void currentItemModified(vtkIdType);
 
 protected slots:
   virtual void onSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected);
@@ -174,8 +177,16 @@ protected slots:
   /// (e.g. after tree was updated in the model from the subject hierarchy)
   virtual void updateRootItem();
 
+  /// Propagate item modified signal if the item or an item in its branch
+  /// was selected in that treeview
+  virtual void onSubjectHierarchyItemModified(vtkObject *caller, void *callData);
+
   /// Called when scene end is finished. Hierarchy is cleared in that case.
-  void onSceneCloseEnded(vtkObject* sceneObject);
+  virtual void onMRMLSceneCloseEnded(vtkObject* sceneObject);
+  /// Called when batch processing starts. Makes sure stored selection does not get emptied before restoring
+  virtual void onMRMLSceneStartBatchProcess(vtkObject* sceneObject);
+  /// Called when batch processing ends. Restores selection, which is lost when the hierarchy is rebuilt
+  virtual void onMRMLSceneEndBatchProcess(vtkObject* sceneObject);
 
 protected:
   /// Set the subject hierarchy node found in the given scene. Called only internally.
@@ -204,6 +215,10 @@ protected:
   /// Apply highlight for subject hierarchy items referenced by argument items by DICOM
   /// \sa highlightReferencedItems
   void applyReferenceHighlightForItems(QList<vtkIdType> itemIDs);
+
+  /// Return the id of the first subject hierarchy item that is found to be selected
+  /// within the branch that has the input item id as its root
+  vtkIdType firstSelectedSubjectHierarchyItemInBranch(vtkIdType itemID);
 
 protected:
   QScopedPointer<qMRMLSubjectHierarchyTreeViewPrivate> d_ptr;

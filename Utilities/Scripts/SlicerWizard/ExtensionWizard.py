@@ -452,7 +452,7 @@ class ExtensionWizard(object):
 
       # Ensure that user's fork is up to date
       logging.info("updating target branch (%s) branch on fork", args.target)
-      xiRemote.push("%s:%s" % (xiBase, args.target))
+      xiRemote.push("%s:refs/heads/%s" % (xiBase, args.target))
 
       # Determine if this is an addition or update to the index
       xdf = name + ".s4ext"
@@ -505,6 +505,9 @@ class ExtensionWizard(object):
                                               wrap=False).split("\n")
       if len(msg) > 2 and not len(msg[1].strip()):
         del msg[1]
+
+      # Update PR title to indicate the target name
+      msg[0] += " [%s]" % args.target
 
       # Try to add compare URL to pull request message, if applicable
       if update and oldRef is not None:

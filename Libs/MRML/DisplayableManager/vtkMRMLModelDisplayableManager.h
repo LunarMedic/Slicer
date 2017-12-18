@@ -17,7 +17,7 @@
 
 // MRMLDisplayableManager includes
 #include "vtkMRMLAbstractThreeDViewDisplayableManager.h"
-#include "vtkMRMLDisplayableManagerWin32Header.h"
+#include "vtkMRMLDisplayableManagerExport.h"
 
 // MRMLLogic includes
 #include "vtkMRMLModelHierarchyLogic.h"
@@ -43,6 +43,7 @@ class vtkCellPicker;
 class vtkClipPolyData;
 class vtkFollower;
 class vtkImplicitBoolean;
+class vtkLookupTable;
 class vtkMatrix4x4;
 class vtkPMatrix4x4;
 class vtkPlane;
@@ -137,6 +138,16 @@ public:
   bool IsModelDisplayable(vtkMRMLDisplayableNode* node)const;
   /// Return true if the display node is a model
   bool IsModelDisplayable(vtkMRMLDisplayNode* node)const;
+
+  /// Helper function for copying lookup tables
+  /// It handles special types of lookup tables and fixes
+  /// error in vtkLoookupTable copy.
+  static vtkLookupTable* CreateLookupTableCopy(vtkLookupTable* source);
+
+  /// Helper function for determining what type of scalar is active.
+  static bool IsCellScalarsActive(vtkMRMLDisplayNode* displayNode,
+    vtkMRMLModelNode* model = 0);
+
 protected:
 
   vtkMRMLModelDisplayableManager();
@@ -182,8 +193,6 @@ protected:
 
   const char* GetActiveScalarName(vtkMRMLDisplayNode* displayNode,
                                   vtkMRMLModelNode* model = 0);
-  bool IsCellScalarsActive(vtkMRMLDisplayNode* displayNode,
-                           vtkMRMLModelNode* model = 0);
 
   /// Returns not null if modified
   int UpdateClipSlicesFromMRML();

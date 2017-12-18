@@ -26,12 +26,21 @@
 #include <QDebug>
 #include <QHeaderView>
 #include <QHBoxLayout>
+#include <QMessageBox>
 #include <QKeyEvent>
 #include <QSortFilterProxyModel>
+#include <QString>
 #include <QToolButton>
 
 // CTK includes
 #include <ctkPopupWidget.h>
+
+// VTK includes
+#include <vtkCollection.h>
+#include <vtkIntArray.h>
+#include <vtkNew.h>
+#include <vtkStringArray.h>
+#include <vtkTable.h>
 
 // qMRML includes
 #include "qMRMLTableView.h"
@@ -39,9 +48,16 @@
 #include "qMRMLTableModel.h"
 
 // MRML includes
+#include <vtkMRMLLayoutNode.h>
+#include <vtkMRMLPlotDataNode.h>
+#include <vtkMRMLPlotChartNode.h>
 #include <vtkMRMLScene.h>
+#include <vtkMRMLSelectionNode.h>
 #include <vtkMRMLTableNode.h>
 #include <vtkMRMLTableViewNode.h>
+
+// STL includes
+#include <deque>
 
 #define CTK_CHECK_AND_RETURN_IF_FAIL(FUNC) \
   if (!FUNC(Q_FUNC_INFO))       \
@@ -207,6 +223,8 @@ void qMRMLTableView::setMRMLTableNode(vtkMRMLTableNode* node)
 
   this->horizontalHeader()->setMinimumSectionSize(60);
   this->resizeColumnsToContents();
+
+  emit selectionChanged();
 }
 
 //------------------------------------------------------------------------------
@@ -430,6 +448,162 @@ void qMRMLTableView::pasteSelection()
 }
 
 //-----------------------------------------------------------------------------
+void qMRMLTableView::plotSelection()
+{
+  Q_D(qMRMLTableView);
+  CTK_CHECK_AND_RETURN_IF_FAIL(d->verifyTableModelAndNode)
+
+  vtkMRMLTableNode* tableNode = mrmlTableNode();
+
+  if(!this->mrmlScene())
+    {
+    qWarning() << "qMRMLTableView::plotSelection failed: no mrmlScene available";
+    return;
+    }
+
+  qMRMLTableModel* mrmlModel = tableModel();
+  QItemSelectionModel* selection = selectionModel();
+  std::deque<int> columnIndices;
+  for (int columnIndex = 0; columnIndex < mrmlModel->columnCount(); columnIndex++)
+    {
+    if (!selection->columnIntersectsSelection(columnIndex, QModelIndex()))
+      {
+      // no items are selected in this entire column, skip it
+      continue;
+      }
+    vtkAbstractArray* column = tableNode->GetTable()->GetColumn(columnIndex);
+    if (!column || !column->GetName())
+      {
+      QString message = QString("Column %1 is invalid. Failed to generate a plot").arg(columnIndex);
+      qCritical() << Q_FUNC_INFO << ": " << message;
+      QMessageBox::warning(NULL, tr("Failed to create Plot"), message);
+      }
+    int columnDataType = column->GetDataType();
+    if (columnDataType == VTK_STRING || columnDataType == VTK_BIT)
+      {
+      QString message = QString("Type of column %1 is 'string' or 'bit'. Plotting of these types are currently not supported."
+        " Please convert the data type of this column to numeric using Table module's Column properties section,"
+        " or select different columns for plotting.").arg(column->GetName());
+      qCritical() << Q_FUNC_INFO << ": " << message;
+      QMessageBox::warning(NULL, tr("Failed to create Plot"), message);
+      return;
+      }
+    columnIndices.push_back(columnIndex);
+    }
+
+  if (columnIndices.size() == 0)
+    {
+    QString message = QString("To generate a plot, please select at least one cell in the table");
+    qCritical() << Q_FUNC_INFO << ": " << message;
+    QMessageBox::warning(NULL, tr("Failed to plot data"), message);
+    return;
+    }
+
+  // Check the DataType of the (X-Axis) Column
+  std::string xColumnName = "Indexes";
+  // We need to provide a valid pointer to an array, even if we use Y axis indices
+  vtkAbstractArray* xColumn = tableNode->GetTable()->GetColumn(columnIndices[0]);
+  if (columnIndices.size() > 1)
+    {
+    // If there are more than one columns selected then use the first one as X column
+    xColumnName = xColumn->GetName();
+    columnIndices.pop_front();
+    }
+
+  vtkMRMLSelectionNode* selectionNode = vtkMRMLSelectionNode::SafeDownCast(
+  this->mrmlScene()->GetNodeByID("vtkMRMLSelectionNodeSingleton"));
+
+  if (!selectionNode)
+    {
+    qWarning() << "qMRMLTableView::plotSelection failed: invalid selection Node";
+    return;
+    }
+
+  // Set a Plot Layout
+  vtkMRMLLayoutNode* layoutNode = vtkMRMLLayoutNode::SafeDownCast(
+    this->mrmlScene()->GetFirstNodeByClass("vtkMRMLLayoutNode"));
+  if (!layoutNode)
+    {
+    qCritical() << Q_FUNC_INFO << ": Unable to get layout node!";
+    return;
+    }
+  int viewArray = layoutNode->GetViewArrangement();
+  if (viewArray != vtkMRMLLayoutNode::SlicerLayoutConventionalPlotView  &&
+      viewArray != vtkMRMLLayoutNode::SlicerLayoutFourUpPlotView        &&
+      viewArray != vtkMRMLLayoutNode::SlicerLayoutFourUpPlotTableView   &&
+      viewArray != vtkMRMLLayoutNode::SlicerLayoutOneUpPlotView         &&
+      viewArray != vtkMRMLLayoutNode::SlicerLayoutThreeOverThreePlotView)
+    {
+    layoutNode->SetViewArrangement(vtkMRMLLayoutNode::SlicerLayoutConventionalPlotView);
+    }
+
+  vtkSmartPointer<vtkMRMLPlotChartNode> plotChartNode = vtkMRMLPlotChartNode::SafeDownCast(
+    this->mrmlScene()->GetNodeByID(selectionNode->GetActivePlotChartID()));
+
+  if (!plotChartNode)
+    {
+    plotChartNode = vtkSmartPointer<vtkMRMLPlotChartNode>::New();
+    this->mrmlScene()->AddNode(plotChartNode);
+    selectionNode->SetActivePlotChartID(plotChartNode->GetID());
+    }
+
+  // Remove columns/plots not selected from plotChartNode
+  plotChartNode->RemoveAllPlotDataNodeIDs();
+
+  for (std::deque<int>::iterator columnIndexIt = columnIndices.begin(); columnIndexIt != columnIndices.end(); ++columnIndexIt)
+    {
+    std::string yColumnName = tableNode->GetColumnName(*columnIndexIt);
+
+    // Check if there is already a PlotDataNode for this Column and avoid duplication
+    vtkSmartPointer<vtkCollection> colPlots = vtkSmartPointer<vtkCollection>::Take(
+      this->mrmlScene()->GetNodesByClassByName("vtkMRMLPlotDataNode", yColumnName.c_str()));
+    if (colPlots == NULL)
+      {
+      continue;
+      }
+    vtkMRMLPlotDataNode *plotDataNode = NULL;
+    for (int plotIndex = 0; plotIndex < colPlots->GetNumberOfItems(); plotIndex++)
+      {
+      plotDataNode = vtkMRMLPlotDataNode::SafeDownCast(colPlots->GetItemAsObject(plotIndex));
+      if (plotDataNode != NULL)
+        {
+        break;
+        }
+      }
+
+    // Create a PlotDataNode if a usable node has not been found
+    if (plotDataNode == NULL)
+      {
+      plotDataNode = vtkMRMLPlotDataNode::SafeDownCast(this->mrmlScene()->AddNewNodeByClass(
+        "vtkMRMLPlotDataNode", yColumnName.c_str()));
+      plotDataNode->SetXColumnName(xColumnName);
+      plotDataNode->SetYColumnName(yColumnName);
+      plotDataNode->SetAndObserveTableNodeID(tableNode->GetID());
+      }
+
+    std::string namePlotDataNode = plotDataNode->GetName();
+    std::size_t found = namePlotDataNode.find("Markups");
+    if (found != std::string::npos)
+      {
+      plotChartNode->RemovePlotDataNodeID(plotDataNode->GetID());
+      plotDataNode->GetNodeReference("Markups")->RemoveNodeReferenceIDs("Markups");
+      this->mrmlScene()->RemoveNode(plotDataNode);
+      continue;
+      }
+
+    // Set the type of the PlotDataNode
+    const char* Type = plotChartNode->GetAttribute("Type");
+    if (strcmp(Type, "Custom"))
+      {
+      plotDataNode->SetType(plotDataNode->GetPlotTypeFromString(Type));
+      }
+
+    // Add the reference of the PlotDataNode in the active PlotChartNode
+    plotChartNode->AddAndObservePlotDataNodeID(plotDataNode->GetID());
+    }
+}
+
+//-----------------------------------------------------------------------------
 void qMRMLTableView::insertColumn()
 {
   Q_D(qMRMLTableView);
@@ -612,4 +786,30 @@ vtkMRMLScene* qMRMLTableView::mrmlScene()const
 {
   Q_D(const qMRMLTableView);
   return d->MRMLScene;
+}
+
+//---------------------------------------------------------------------------
+QList<int> qMRMLTableView::selectedMRMLTableColumnIndices()const
+{
+  QList<int> mrmlColumnIndexList;
+  QModelIndexList selection = selectionModel()->selectedIndexes();
+  qMRMLTableModel* tableModel = this->tableModel();
+  QModelIndex index;
+  foreach(index, selection)
+    {
+    int mrmlColumnIndex = tableModel->mrmlTableColumnIndex(index);
+    if (!mrmlColumnIndexList.contains(mrmlColumnIndex))
+      {
+      // insert unique row/column index only
+      mrmlColumnIndexList.push_back(mrmlColumnIndex);
+      }
+    }
+  return mrmlColumnIndexList;
+}
+
+//---------------------------------------------------------------------------
+void qMRMLTableView::selectionChanged(const QItemSelection & selected, const QItemSelection & deselected)
+{
+  QTableView::selectionChanged(selected, deselected);
+  emit selectionChanged();
 }

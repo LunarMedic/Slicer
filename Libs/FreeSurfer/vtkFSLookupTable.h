@@ -5,18 +5,13 @@
   See COPYRIGHT.txt
   or http://www.slicer.org/copyright/copyright.txt for details.
 
-  Program:   3D Slicer
-  Module:    $RCSfile: vtkFSLookupTable.h,v $
-  Date:      $Date: 2006/02/28 20:50:07 $
-  Version:   $Revision: 1.4 $
-
 =========================================================================auto=*/
 
 #ifndef __vtkFSLookupTable_h
 #define __vtkFSLookupTable_h
 
 #include <FreeSurferConfigure.h>
-#include "vtkFreeSurferWin32Header.h"
+#include "vtkFreeSurferExport.h"
 
 // VTK includes
 #include <vtkLookupTable.h>
@@ -31,7 +26,9 @@ public:
     vtkTypeMacro(vtkFSLookupTable,vtkLookupTable);
     void PrintSelf(ostream& os, vtkIndent indent) VTK_OVERRIDE;
 
-
+    // Description:
+    // Copy the contents from another LookupTable
+    void DeepCopy(vtkScalarsToColors *lut) VTK_OVERRIDE;
 
     vtkGetMacro(LowThresh,float);
     vtkSetMacro(LowThresh,float);
@@ -79,11 +76,12 @@ public:
     ///
     /// don't do anything as it's overriding the LUTs low threshold with the
     /// scalar values' lowest value
+    using vtkLookupTable::SetRange;
     void SetRange(double, double) VTK_OVERRIDE;
     ///
     /// Given a scalar value val, return an rgba color value
     /// returns array of length 3, 0-255
-    unsigned char *MapValue(double val) VTK_OVERRIDE;
+    const unsigned char *MapValue(double val) VTK_OVERRIDE;
     ///
     /// passes val to MapValue
     void GetColor(double, double[3]) VTK_OVERRIDE;

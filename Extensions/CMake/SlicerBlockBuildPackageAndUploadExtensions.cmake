@@ -56,7 +56,7 @@ include(SlicerBlockUploadExtensionPrerequisites) # Common to all extensions
 #-----------------------------------------------------------------------------
 # Collect extension description file (*.s4ext)
 #-----------------------------------------------------------------------------
-file(GLOB_RECURSE s4extfiles "${Slicer_EXTENSION_DESCRIPTION_DIR}/*.s4ext")
+file(GLOB s4extfiles "${Slicer_EXTENSION_DESCRIPTION_DIR}/*.s4ext")
 
 # Get the dependency information of each extension
 set(EXTENSION_LIST)
@@ -192,6 +192,9 @@ foreach(EXTENSION_NAME ${EXTENSION_LIST})
         RESULT_VARIABLE result
         ERROR_VARIABLE error
         )
+      # Sanitize error string to prevent false positive by Visual Studio
+      set(sanitized_error \"\${error}\")
+      string(REPLACE \"error:\" \"error \" sanitized_error \"\${sanitized_error}\")
       message(STATUS \"download_${proj}_wrapper_script: Ignoring result \${result}\")
       if(NOT result EQUAL 0)
         message(STATUS \"Generating '${EXTENSION_SOURCE_DIR}/CMakeLists.txt'\")
@@ -199,7 +202,7 @@ foreach(EXTENSION_NAME ${EXTENSION_LIST})
         file(WRITE \"${EXTENSION_SOURCE_DIR}/CMakeLists.txt\"
           \"cmake_minimum_required(VERSION 3.5)
           project(${proj} NONE)
-          message(FATAL_ERROR \\\"Failed to download extension using ${ext_ep_options_repository}\\n\${error}\\\")
+          message(FATAL_ERROR \\\"Failed to download extension using ${ext_ep_options_repository}\\n\${sanitized_error}\\\")
           \"
           )
       endif()

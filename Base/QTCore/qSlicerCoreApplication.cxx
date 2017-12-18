@@ -98,6 +98,7 @@
 #include <vtkMRMLScene.h>
 
 // CTKLauncherLib includes
+#include <ctkAppLauncherEnvironment.h>
 #include <ctkAppLauncherSettings.h>
 
 // VTK includes
@@ -214,6 +215,20 @@ void qSlicerCoreApplicationPrivate::init()
   this->parseArguments();
 
   this->SlicerHome = this->discoverSlicerHomeDirectory();
+
+  // Save the environment if no launcher is used (this is for example the case
+  // on MacOSX when slicer is started from an install tree)
+  if (ctkAppLauncherEnvironment::currentLevel() == 0)
+    {
+    QProcessEnvironment updatedEnv;
+    ctkAppLauncherEnvironment::saveEnvironment(
+          this->Environment, this->Environment.keys(), updatedEnv);
+    foreach(const QString& varname, updatedEnv.keys())
+      {
+      q->setEnvironmentVariable(varname, updatedEnv.value(varname));
+      }
+    }
+
   q->setEnvironmentVariable("SLICER_HOME", this->SlicerHome);
 
   ctkAppLauncherSettings appLauncherSettings;
@@ -663,6 +678,19 @@ bool qSlicerCoreApplication::testAttribute(qSlicerCoreApplication::ApplicationAt
 }
 
 //-----------------------------------------------------------------------------
+QProcessEnvironment qSlicerCoreApplication::startupEnvironment() const
+{
+  return ctkAppLauncherEnvironment::environment(0);
+}
+
+//-----------------------------------------------------------------------------
+QProcessEnvironment qSlicerCoreApplication::environment() const
+{
+  Q_D(const qSlicerCoreApplication);
+  return d->Environment;
+}
+
+//-----------------------------------------------------------------------------
 void qSlicerCoreApplication::setEnvironmentVariable(const QString& key, const QString& value)
 {
   Q_D(qSlicerCoreApplication);
@@ -973,9 +1001,16 @@ bool qSlicerCoreApplication::isInstalled()const
 }
 
 //-----------------------------------------------------------------------------
+QString qSlicerCoreApplication::releaseType()const
+{
+  return QString(Slicer_RELEASE_TYPE);
+}
+
+//-----------------------------------------------------------------------------
 bool qSlicerCoreApplication::isRelease()const
 {
-  return qSlicerUtils::isRelease(Slicer_VERSION_FULL);
+  qWarning() << Q_FUNC_INFO << "Deprecated: Use releaseType() instead";
+  return this->releaseType() == "Stable";
 }
 
 //-----------------------------------------------------------------------------
@@ -1036,7 +1071,7 @@ QString qSlicerCoreApplication::defaultScenePath() const
         "DefaultScenePath", QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation)).toString();
 #else
   QString defaultScenePath = appSettings->value(
-        "DefaultScenePath", QStandardPaths::DocumentsLocation).toString();
+        "DefaultScenePath", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
 #endif
 
   return defaultScenePath;
@@ -1075,7 +1110,15 @@ bool qSlicerCoreApplication::isEmbeddedModule(const QString& moduleFileName)cons
 //-----------------------------------------------------------------------------
 QString qSlicerCoreApplication::defaultTemporaryPath() const
 {
+#ifdef Q_OS_UNIX
+  // In multi-user Linux environment, a single temporary directory is shared
+  // by all users. We need to create a separate directory for each user,
+  // as users do not have access to another user's directory.
+  QString userName = qgetenv("USER");
+  return QFileInfo(QDir::tempPath(), this->applicationName()+"-"+userName).absoluteFilePath();
+#else
   return QFileInfo(QDir::tempPath(), this->applicationName()).absoluteFilePath();
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -1103,13 +1146,14 @@ QString qSlicerCoreApplication::launcherExecutableFilePath()const
 //-----------------------------------------------------------------------------
 QString qSlicerCoreApplication::launcherSettingsFilePath()const
 {
+  QString appName = this->applicationName().replace("-tmp", "");
   if (this->isInstalled())
     {
-    return this->slicerHome() + "/" Slicer_BIN_DIR "/" + this->applicationName() + "LauncherSettings.ini";
+    return this->slicerHome() + "/" Slicer_BIN_DIR "/" + appName + "LauncherSettings.ini";
     }
   else
     {
-    return this->slicerHome() + "/" + this->applicationName() + "LauncherSettings.ini";
+    return this->slicerHome() + "/" + appName + "LauncherSettings.ini";
     }
 }
 
@@ -1304,7 +1348,6 @@ QString qSlicerCoreApplication::libraries()const
     "<a href=\"http://www.itk.org/\">ITK</a>, "
     "<a href=\"http://www.commontk.org/index.php/Main_Page\">CTK</a>, "
     "<a href=\"https://www.qt.io/\">Qt</a>, "
-    "<a href=\"http://www.tcl.tk\">Tcl/Tk</a>, "
     "<a href=\"http://teem.sf.net\">Teem</a>, "
     "<a href=\"http://www.python.org/\">Python</a>, "
     "<a href=\"http://dicom.offis.de/dcmtk\">DCMTK</a>, "
@@ -1317,9 +1360,9 @@ QString qSlicerCoreApplication::copyrights()const
 {
   QString copyrightsText(
     "<table align=\"center\" border=\"0\" width=\"80%\"><tr>"
-    "<td align=\"center\"><a href=\"http://slicer.org/pages/License\">Licensing Information</a></td>"
-    "<td align=\"center\"><a href=\"http://slicer.org/\">Website</a></td>"
-    "<td align=\"center\"><a href=\"http://slicer.org/pages/Acknowledgments\">Acknowledgments</a></td>"
+    "<td align=\"center\"><a href=\"https://www.slicer.org/wiki/License\">Licensing Information</a></td>"
+    "<td align=\"center\"><a href=\"https://slicer.org/\">Website</a></td>"
+    "<td align=\"center\"><a href=\"https://www.slicer.org/wiki/Documentation/4.x/Acknowledgments\">Acknowledgments</a></td>"
     "</tr></table>");
   return copyrightsText;
 }

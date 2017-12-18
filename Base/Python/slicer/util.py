@@ -49,6 +49,24 @@ def sourceDir():
   """
   return _readCMakeCache('Slicer_SOURCE_DIR')
 
+def startupEnvironment():
+  """Returns the environment without the Slicer specific values.
+
+  Path environment variables like `PATH`, `LD_LIBRARY_PATH` or `PYTHONPATH`
+  will not contain values found in the launcher settings.
+
+  Similarly `key=value` environment variables also found in the launcher
+  settings are excluded. Note that if a value was associated with a key prior
+  starting Slicer, it will not be set in the environment returned by this
+  function.
+
+  The function excludes both the Slicer launcher settings and the revision
+  specific launcher settings.
+  """
+  import slicer
+  startupEnv = slicer.app.startupEnvironment()
+  return {varname: startupEnv.value(varname) for varname in startupEnv.keys()}
+
 #
 # Custom Import
 #
@@ -260,13 +278,13 @@ def setSliceViewerLayers(background='keep-current', foreground='keep-current', l
   num = slicer.mrmlScene.GetNumberOfNodesByClass('vtkMRMLSliceCompositeNode')
   for i in range(num):
       sliceViewer = slicer.mrmlScene.GetNthNodeByClass(i, 'vtkMRMLSliceCompositeNode')
-      if background is not 'keep-current':
+      if background != 'keep-current':
           sliceViewer.SetBackgroundVolumeID(_nodeID(background))
-      if foreground is not 'keep-current':
+      if foreground != 'keep-current':
           sliceViewer.SetForegroundVolumeID(_nodeID(foreground))
       if foregroundOpacity is not None:
           sliceViewer.SetForegroundOpacity(foregroundOpacity)
-      if label is not 'keep-current':
+      if label != 'keep-current':
           sliceViewer.SetLabelVolumeID(_nodeID(label))
       if labelOpacity is not None:
           sliceViewer.SetLabelOpacity(labelOpacity)
@@ -345,6 +363,16 @@ def loadLabelVolume(filename, properties={}, returnNode=False):
   return loadNodeFromFile(filename, filetype, properties, returnNode)
 
 def loadVolume(filename, properties={}, returnNode=False):
+  """Properties:
+  - name: this name will be used as node name for the loaded volume
+  - labelmap: interpret volume as labelmap
+  - singleFile: ignore all other files in the directory
+  - center: ignore image position
+  - discardOrientation: ignore image axis directions
+  - autoWindowLevel: compute window/level automatically
+  - show: display volume in slice viewers after loading is completed
+  - fileNames: list of filenames to load the volume from
+  """
   filetype = 'VolumeFile'
   return loadNodeFromFile(filename, filetype, properties, returnNode)
 
@@ -717,6 +745,19 @@ def arrayFromGridTransform(gridTransformNode):
   narray = vtk.util.numpy_support.vtk_to_numpy(displacementGrid.GetPointData().GetScalars()).reshape(nshape)
   return narray
 
+def arrayFromSegment(segmentationNode, segmentId):
+  """Return voxel array of a segment's binary labelmap representation as numpy array.
+  Voxels values are not copied.
+  If binary labelmap is the master representation then voxel values in the volume node can be modified
+  by changing values in the numpy array. After all modifications has been completed, call:
+  segmentationNode.GetSegmentation().GetSegment(segmentID).Modified()
+  """
+  vimage = segmentationNode.GetBinaryLabelmapRepresentation(segmentId)
+  nshape = tuple(reversed(vimage.GetDimensions()))
+  import vtk.util.numpy_support
+  narray = vtk.util.numpy_support.vtk_to_numpy(vimage.GetPointData().GetScalars()).reshape(nshape)
+  return narray
+
 def updateVolumeFromArray(volumeNode, narray):
   """Sets voxels of a volume node from a numpy array.
   Voxels values are copied, therefore if the numpy array
@@ -754,6 +795,38 @@ def updateVolumeFromArray(volumeNode, narray):
   volumeNode.StorableModified()
   volumeNode.Modified()
   volumeNode.InvokeEvent(slicer.vtkMRMLVolumeNode.ImageDataModifiedEvent, volumeNode)
+
+def updateTableFromArray(tableNode, narrays):
+  """Sets values in a table node from a numpy array.
+  Values are copied, therefore if the numpy array
+  is modified after calling this method, values in the table node will not change.
+
+  Example:
+
+      import numpy as np
+      histogram = np.histogram(arrayFromVolume(getNode('MRHead')))
+      tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
+      updateTableFromArray(tableNode, histogram)
+
+  """
+  import numpy as np
+  import vtk.util.numpy_support
+
+  if tableNode is None:
+    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
+  if type(narrays) == np.ndarray and len(narrays.shape) == 1:
+    ncolumns = [narrays]
+  elif type(narrays) == np.ndarray and len(narrays.shape) == 2:
+    ncolumns = narrays.T
+  elif type(narrays) == tuple or type(narrays) == list:
+    ncolumns = narrays
+  else:
+    raise ValueError('Expected narrays is a numpy ndarray, or tuple or list of numpy ndarrays, got %s instead.' % (str(type(narrays))))
+  tableNode.RemoveAllColumns()
+  for ncolumn in ncolumns:
+    vcolumn = vtk.util.numpy_support.numpy_to_vtk(num_array=ncolumn.ravel(),deep=True,array_type=vtk.VTK_FLOAT)
+    tableNode.AddColumn(vcolumn)
+  return tableNode
 
 #
 # VTK
@@ -859,66 +932,83 @@ def delayDisplay(message,autoCloseMsec=1000):
     okButton.connect('clicked()', messagePopup.close)
   messagePopup.exec_()
 
-def infoDisplay(text, windowTitle="Slicer information", parent=None, standardButtons=None, **kwargs):
+def infoDisplay(text, windowTitle=None, parent=None, standardButtons=None, **kwargs):
   """Display popup with a info message.
   """
-  import qt
+  import qt, slicer
   import logging
+  if not windowTitle:
+    windowTitle = slicer.app.applicationName + " information"
   logging.info(text)
   if mainWindow(verbose=False):
     standardButtons = standardButtons if standardButtons else qt.QMessageBox.Ok
     messageBox(text, parent, windowTitle=windowTitle, icon=qt.QMessageBox.Information, standardButtons=standardButtons,
                **kwargs)
 
-def warningDisplay(text, windowTitle="Slicer warning", parent=None, standardButtons=None, **kwargs):
+def warningDisplay(text, windowTitle=None, parent=None, standardButtons=None, **kwargs):
   """Display popup with a warning message.
   """
-  import qt
+  import qt, slicer
   import logging
+  if not windowTitle:
+    windowTitle = slicer.app.applicationName + " warning"
   logging.warning(text)
   if mainWindow(verbose=False):
     standardButtons = standardButtons if standardButtons else qt.QMessageBox.Ok
     messageBox(text, parent, windowTitle=windowTitle, icon=qt.QMessageBox.Warning, standardButtons=standardButtons,
                **kwargs)
 
-def errorDisplay(text, windowTitle="Slicer error", parent=None, standardButtons=None, **kwargs):
+def errorDisplay(text, windowTitle=None, parent=None, standardButtons=None, **kwargs):
   """Display an error popup.
   """
-  import qt
+  import qt, slicer
   import logging
+  if not windowTitle:
+    windowTitle = slicer.app.applicationName + " error"
   logging.error(text)
   if mainWindow(verbose=False):
     standardButtons = standardButtons if standardButtons else qt.QMessageBox.Ok
     messageBox(text, parent, windowTitle=windowTitle, icon=qt.QMessageBox.Critical, standardButtons=standardButtons,
                **kwargs)
 
-def confirmOkCancelDisplay(text, windowTitle="Slicer confirmation", parent=None, **kwargs):
+def confirmOkCancelDisplay(text, windowTitle=None, parent=None, **kwargs):
   """Display an confirmation popup. Return if confirmed with OK.
   """
-  import qt
+  import qt, slicer
+  if not windowTitle:
+    windowTitle = slicer.app.applicationName + " confirmation"
   result = messageBox(text, parent=parent, windowTitle=windowTitle, icon=qt.QMessageBox.Question,
                        standardButtons=qt.QMessageBox.Ok | qt.QMessageBox.Cancel, **kwargs)
   return result == qt.QMessageBox.Ok
 
-def confirmYesNoDisplay(text, windowTitle="Slicer confirmation", parent=None, **kwargs):
+def confirmYesNoDisplay(text, windowTitle=None, parent=None, **kwargs):
   """Display an confirmation popup. Return if confirmed with Yes.
   """
-  import qt
+  import qt, slicer
+  if not windowTitle:
+    windowTitle = slicer.app.applicationName + " confirmation"
   result = messageBox(text, parent=parent, windowTitle=windowTitle, icon=qt.QMessageBox.Question,
                        standardButtons=qt.QMessageBox.Yes | qt.QMessageBox.No, **kwargs)
   return result == qt.QMessageBox.Yes
 
-def confirmRetryCloseDisplay(text, windowTitle="Slicer error", parent=None, **kwargs):
+def confirmRetryCloseDisplay(text, windowTitle=None, parent=None, **kwargs):
   """Display an confirmation popup. Return if confirmed with Retry.
   """
-  import qt
+  import qt, slicer
+  if not windowTitle:
+    windowTitle = slicer.app.applicationName + " error"
   result = messageBox(text, parent=parent, windowTitle=windowTitle, icon=qt.QMessageBox.Critical,
                        standardButtons=qt.QMessageBox.Retry | qt.QMessageBox.Close, **kwargs)
   return result == qt.QMessageBox.Retry
 
 def messageBox(text, parent=None, **kwargs):
+  """Displays a messagebox.
+  ctkMessageBox is used instead of a default qMessageBox to provide "Don't show again" checkbox.
+  For example: slicer.util.messageBox("Some message", dontShowAgainSettingsKey = "MainWindow/DontShowSomeMessage")
+  """
   import qt
-  mbox = qt.QMessageBox(parent if parent else mainWindow())
+  import ctk
+  mbox = ctk.ctkMessageBox(parent if parent else mainWindow())
   mbox.text = text
   for key, value in kwargs.iteritems():
     if hasattr(mbox, key):
@@ -1031,3 +1121,106 @@ interactor.AddObserver(vtk.vtkCommand.LeftButtonPressEvent, onClick)
   up()
   interactor.SetShiftKey(0)
   interactor.SetControlKey(0)
+
+def downloadFile(url, targetFilePath):
+  """ Download ``url`` to local storage as ``targetFilePath``
+
+  Target file path needs to indicate the file name and extension as well
+  """
+  import os
+  import logging
+  if not os.path.exists(targetFilePath) or os.stat(targetFilePath).st_size == 0:
+    logging.info('Downloading from\n  %s\nas file\n  %s\nIt may take a few minutes...' % (url,targetFilePath))
+    try:
+      import urllib
+      urllib.urlretrieve(url, targetFilePath)
+    except Exception, e:
+      import traceback
+      traceback.print_exc()
+      logging.error('Failed to download file from ' + url)
+      return False
+  else:
+    logging.info('Requested file has been found: ' + targetFilePath)
+  return True
+
+def extractArchive(archiveFilePath, outputDir, expectedNumberOfExtractedFiles=None):
+  """ Extract file ``archiveFilePath`` into folder ``outputDir``.
+
+  Number of expected files unzipped may be specified in ``expectedNumberOfExtractedFiles``.
+  If folder contains the same number of files as expected (if specified), then it will be
+  assumed that unzipping has been successfully done earlier.
+  """
+  import os
+  import logging
+  from slicer import app
+  if not os.path.exists(archiveFilePath):
+    logging.error('Specified file %s does not exist' % (archiveFilePath))
+    return False
+  fileName, fileExtension = os.path.splitext(archiveFilePath)
+  if fileExtension.lower() != '.zip':
+    #TODO: Support other archive types
+    logging.error('Only zip archives are supported now, got ' + fileExtension)
+    return False
+
+  numOfFilesInOutputDir = len(getFilesInDirectory(outputDir, False))
+  if expectedNumberOfExtractedFiles is not None \
+      and numOfFilesInOutputDir == expectedNumberOfExtractedFiles:
+    logging.info('File %s already unzipped into %s' % (archiveFilePath, outputDir))
+    return True
+
+  extractSuccessful = app.applicationLogic().Unzip(archiveFilePath, outputDir)
+  numOfFilesInOutputDirTest = len(getFilesInDirectory(outputDir, False))
+  if extractSuccessful is False or (expectedNumberOfExtractedFiles is not None \
+      and numOfFilesInOutputDirTest != expectedNumberOfExtractedFiles):
+    logging.error('Unzipping %s into %s failed' % (archiveFilePath, outputDir))
+    return False
+  logging.info('Unzipping %s into %s successful' % (archiveFilePath, outputDir))
+  return True
+
+def downloadAndExtractArchive(url, archiveFilePath, outputDir, \
+                              expectedNumberOfExtractedFiles=None, numberOfTrials=3):
+  """ Downloads an archive from ``url`` as ``archiveFilePath``, and extracts it to ``outputDir``.
+
+  This combined function tests the success of the download by the extraction step,
+  and re-downloads if extraction failed.
+  """
+  import os
+  import shutil
+  import logging
+
+  maxNumberOfTrials = numberOfTrials
+
+  def _cleanup():
+    # If there was a failure, delete downloaded file and empty output folder
+    logging.warning('Download and extract failed, removing archive and destination folder and retrying. Attempt #%d...' % (maxNumberOfTrials - numberOfTrials))
+    os.remove(archiveFilePath)
+    shutil.rmtree(outputDir)
+    os.mkdir(outputDir)
+
+  while numberOfTrials:
+    if not downloadFile(url, archiveFilePath):
+      numberOfTrials -= 1
+      _cleanup()
+      continue
+    if not extractArchive(archiveFilePath, outputDir, expectedNumberOfExtractedFiles):
+      numberOfTrials -= 1
+      _cleanup()
+      continue
+    return True
+
+  _cleanup()
+  return False
+
+def getFilesInDirectory(directory, absolutePath=True):
+  """ Collect all files in a directory and its subdirectories in a list
+  """
+  import os
+  allFiles=[]
+  for root, subdirs, files in os.walk(directory):
+    for fileName in files:
+      if absolutePath:
+        fileAbsolutePath = os.path.abspath(os.path.join(root, fileName)).replace('\\','/')
+        allFiles.append(fileAbsolutePath)
+      else:
+        allFiles.append(fileName)
+  return allFiles

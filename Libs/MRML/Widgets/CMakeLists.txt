@@ -12,6 +12,10 @@ if(NOT DEFINED BUILD_SHARED_LIBS)
   option(BUILD_SHARED_LIBS "Build with shared libraries." ON)
 endif(NOT DEFINED BUILD_SHARED_LIBS)
 
+if(NOT DEFINED MRML_BUILD_QT_DESIGNER_PLUGINS)
+  option(MRML_BUILD_QT_DESIGNER_PLUGINS "Build Qt designer plugins." ON)
+endif()
+
 include(CheckIncludeFiles)
 check_include_files("stdint.h" HAVE_STDINT_H)
 
@@ -138,6 +142,17 @@ set(MRMLWidgets_SRCS
   qMRMLNodeComboBox_p.h
   qMRMLNodeFactory.cxx
   qMRMLNodeFactory.h
+  qMRMLPlotWidget.cxx
+  qMRMLPlotWidget.h
+  qMRMLPlotView.cxx
+  qMRMLPlotView_p.h
+  qMRMLPlotView.h
+  qMRMLPlotViewControllerWidget.cxx
+  qMRMLPlotViewControllerWidget.h
+  qMRMLPlotViewControllerWidget_p.h
+  qMRMLPlotViewInformationWidget.cxx
+  qMRMLPlotViewInformationWidget.h
+  qMRMLPlotViewInformationWidget_p.h
   qMRMLRangeWidget.cxx
   qMRMLRangeWidget.h
   qMRMLROIWidget.cxx
@@ -273,6 +288,13 @@ set(MRMLWidgets_MOC_SRCS
   qMRMLNodeComboBoxDelegate.h
   qMRMLNodeComboBoxMenuDelegate.h
   qMRMLNodeFactory.h
+  qMRMLPlotWidget.h
+  qMRMLPlotViewControllerWidget.h
+  qMRMLPlotViewControllerWidget_p.h
+  qMRMLPlotViewInformationWidget.h
+  qMRMLPlotViewInformationWidget_p.h
+  qMRMLPlotView_p.h
+  qMRMLPlotView.h
   qMRMLRangeWidget.h
   qMRMLROIWidget.h
   qMRMLScalarInvariantComboBox.h
@@ -337,6 +359,8 @@ set(MRMLWidgets_UI_SRCS
   Resources/UI/qMRMLModelInfoWidget.ui
   Resources/UI/qMRMLNodeAttributeTableView.ui
   Resources/UI/qMRMLNodeAttributeTableWidget.ui
+  Resources/UI/qMRMLPlotViewControllerWidget.ui
+  Resources/UI/qMRMLPlotViewInformationWidget.ui
   Resources/UI/qMRMLROIWidget.ui
   Resources/UI/qMRMLSceneFactoryWidget.ui
   Resources/UI/qMRMLScreenShotDialog.ui
@@ -528,7 +552,9 @@ endif()
 # --------------------------------------------------------------------------
 # Qt Designer Plugins
 # --------------------------------------------------------------------------
-add_subdirectory(DesignerPlugins)
+if(MRML_BUILD_QT_DESIGNER_PLUGINS)
+  add_subdirectory(DesignerPlugins)
+endif()
 
 # --------------------------------------------------------------------------
 # Set INCLUDE_DIRS variable

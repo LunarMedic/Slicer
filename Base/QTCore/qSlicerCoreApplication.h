@@ -24,6 +24,7 @@
 // Qt includes
 #include <QApplication>
 #include <QMetaType>
+#include <QProcessEnvironment>
 #include <QStringList>
 #include <QVariant>
 
@@ -78,6 +79,7 @@ class Q_SLICER_BASE_QTCORE_EXPORT qSlicerCoreApplication : public QApplication
   Q_PROPERTY(QString intDir READ intDir CONSTANT)
   Q_PROPERTY(bool isInstalled READ isInstalled CONSTANT)
   Q_PROPERTY(bool isRelease READ isRelease CONSTANT)
+  Q_PROPERTY(QString releaseType READ releaseType CONSTANT)
   Q_PROPERTY(QString repositoryUrl READ repositoryUrl CONSTANT)
   Q_PROPERTY(QString repositoryBranch READ repositoryBranch CONSTANT)
   Q_PROPERTY(QString repositoryRevision READ repositoryRevision CONSTANT)
@@ -109,7 +111,38 @@ public:
   /// \sa QCoreApplication::testAttribute
   static bool testAttribute(qSlicerCoreApplication::ApplicationAttribute attribute);
 
-  /// Convenient function to set an environment variable
+  /// \brief Returns the environment without the Slicer specific values.
+  ///
+  /// Path environment variables like `PATH`, `LD_LIBRARY_PATH` or `PYTHONPATH`
+  /// will not contain values found in the launcher settings.
+  ///
+  /// Similarly `key=value` environment variables also found in the launcher
+  /// settings are excluded. Note that if a value was associated with a key prior
+  /// starting Slicer, it will not be set in the environment returned by this
+  /// function.
+  ///
+  /// The function excludes both the Slicer launcher settings and the revision
+  /// specific launcher settings.
+  ///
+  /// \sa launcherSettingsFilePath(), launcherRevisionSpecificUserSettingsFilePath()
+  /// \sa repositoryRevision()
+  /// \sa environment()
+  Q_INVOKABLE QProcessEnvironment startupEnvironment() const;
+
+  /// \brief Returns the current environment.
+  ///
+  /// The returned environment contains all values found in the launcher
+  /// settings.
+  ///
+  /// \note Environment variables set from python updating `os.environ` or
+  /// set from c++ directly calling `putenv()` will **NOT** be found in the
+  /// environment returned by this function.
+  ///
+  /// \sa setEnvironmentVariable(const QString& key, const QString& value);
+  Q_INVOKABLE QProcessEnvironment environment() const;
+
+  /// \brief Convenient function to set an environment variable.
+  ///
   /// \note Using this function will ensure that the environment is up-to-date for
   /// processes started using QProcess or other alternative methods.
   void setEnvironmentVariable(const QString& key, const QString& value);
@@ -218,11 +251,16 @@ public:
   /// Return true is this instance of Slicer is running from an installed directory
   bool isInstalled()const;
 
-  /// \brief Return true if this instance of Slicer is a \a Release build.
+  /// \brief Return the release type of this instance of Slicer.
   ///
-  /// \copydetails qSlicerUtils::isRelease()
+  /// Release type can be `Experimental`, `Nightly` or `Stable`.
+  QString releaseType()const;
+
+  /// \brief Return true if this instance of Slicer is a \a Stable release build.
   ///
-  /// \sa qSlicerUtils::isRelease()
+  /// \deprecated Use `releaseType() == "Stable"` instead.
+  ///
+  /// \sa releaseType()
   bool isRelease()const;
 
   /// Associate a module with a node type.

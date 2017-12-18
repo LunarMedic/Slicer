@@ -24,7 +24,7 @@
 // MRMLLogic includes
 #include "vtkMRMLAbstractLogic.h"
 
-#include "vtkMRMLLogicWin32Header.h"
+#include "vtkMRMLLogicExport.h"
 
 class vtkMRMLColorLogic;
 class vtkMRMLModelDisplayNode;
@@ -127,6 +127,9 @@ public:
 
   /// Propagate selected table in the SelectionNode to table view nodes.
   void PropagateTableSelection();
+
+  /// Propagate selected PlotChart in the SelectionNode to Plot view nodes.
+  void PropagatePlotChartSelection();
 
   /// zip the directory into a zip file
   /// Returns success or failure.

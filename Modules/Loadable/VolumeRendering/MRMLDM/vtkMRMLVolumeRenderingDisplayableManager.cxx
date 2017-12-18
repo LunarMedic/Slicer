@@ -63,10 +63,6 @@
 #include "vtkVolumeProperty.h"
 #include <vtkVersion.h>
 
-// ITKSys includes
-//#include <itksys/SystemTools.hxx>
-//#include <itksys/Directory.hxx>
-
 // STD includes
 #include <cassert>
 #include <cmath>
@@ -751,6 +747,14 @@ void vtkMRMLVolumeRenderingDisplayableManager::OnVolumeRenderingDisplayNodeModif
       }
     return;
     }
+
+  if (dnode != this->DisplayedNode && !dnode->GetVisibility())
+    {
+    // one of the hidden (not active) volumes are modified
+    // we do not need to do anything
+    return;
+    }
+
   bool wasVolumeVisible = this->IsVolumeInView();
 
   this->UpdatePipelineFromDisplayNode(dnode);

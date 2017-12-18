@@ -40,15 +40,18 @@
 class VTK_SLICER_TERMINOLOGIES_LOGIC_EXPORT vtkSlicerTerminologyType : public vtkCodedEntry
 {
 public:
+  static int INVALID_COLOR[3];
+
+public:
   static vtkSlicerTerminologyType *New();
   vtkTypeMacro(vtkSlicerTerminologyType, vtkCodedEntry);
   void PrintSelf(ostream& os, vtkIndent indent) VTK_OVERRIDE;
 
   /// Reset state of object
-  virtual void Initialize();
+  virtual void Initialize() VTK_OVERRIDE;
 
   /// Copy one type into another
-  virtual void Copy(vtkCodedEntry* aType);
+  virtual void Copy(vtkCodedEntry* aType) VTK_OVERRIDE;
 
 public:
   vtkGetVector3Macro(RecommendedDisplayRGBValue, unsigned char);
@@ -75,17 +78,17 @@ protected:
   void operator=(const vtkSlicerTerminologyType&);
 
 protected:
-  /// 'recommendedDisplayRGBValue' member of the category object
+  /// 'recommendedDisplayRGBValue' member of the type object
   unsigned char RecommendedDisplayRGBValue[3];
-  /// 'slicerLabel' member of the category object. Value example "artery"
+  /// '3dSlicerLabel' member of the type object. Value example "artery"
   char* SlicerLabel;
-  /// 'SNOMEDCTConceptID' member of the category object. Value example "275989006"
+  /// 'SNOMEDCTConceptID' member of the type object. Value example "275989006"
   char* SNOMEDCTConceptID;
-  /// 'UMLSConceptUID' member of the category object. Value example "C0555806"
+  /// 'UMLSConceptUID' member of the type object. Value example "C0555806"
   char* UMLSConceptUID;
-  /// 'cid' member of the category object. Value example "7166"
+  /// 'cid' member of the type object. Value example "7166"
   char* Cid;
-  /// 'contextGroupName' member of the category object. Value example "Common Tissue Segmentation Types"
+  /// 'contextGroupName' member of the type object. Value example "Common Tissue Segmentation Types"
   char* ContextGroupName;
 
   /// Flag indicating whether the type object has a 'Modifier' member array. False by default.

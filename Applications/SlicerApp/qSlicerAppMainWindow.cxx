@@ -390,10 +390,32 @@ void qSlicerAppMainWindowPrivate::setupUi(QMainWindow * mainWindow)
   layoutButton->setText(q->tr("Layout"));
   layoutButton->setMenu(this->LayoutMenu);
   layoutButton->setPopupMode(QToolButton::InstantPopup);
+
   layoutButton->setDefaultAction(this->ViewLayoutConventionalAction);
+
   QObject::connect(this->LayoutMenu, SIGNAL(triggered(QAction*)),
                    layoutButton, SLOT(setDefaultAction(QAction*)));
   QObject::connect(this->LayoutMenu, SIGNAL(triggered(QAction*)),
+                   q, SLOT(onLayoutActionTriggered(QAction*)));
+
+  QObject::connect(this->menuConventionalQuantitative, SIGNAL(triggered(QAction*)),
+                   layoutButton, SLOT(setDefaultAction(QAction*)));
+  QObject::connect(this->menuConventionalQuantitative, SIGNAL(triggered(QAction*)),
+                   q, SLOT(onLayoutActionTriggered(QAction*)));
+
+  QObject::connect(this->menuFourUpQuantitative, SIGNAL(triggered(QAction*)),
+                   layoutButton, SLOT(setDefaultAction(QAction*)));
+  QObject::connect(this->menuFourUpQuantitative, SIGNAL(triggered(QAction*)),
+                   q, SLOT(onLayoutActionTriggered(QAction*)));
+
+  QObject::connect(this->menuOneUpQuantitative, SIGNAL(triggered(QAction*)),
+                   layoutButton, SLOT(setDefaultAction(QAction*)));
+  QObject::connect(this->menuOneUpQuantitative, SIGNAL(triggered(QAction*)),
+                   q, SLOT(onLayoutActionTriggered(QAction*)));
+
+  QObject::connect(this->menuThreeOverThreeQuantitative, SIGNAL(triggered(QAction*)),
+                   layoutButton, SLOT(setDefaultAction(QAction*)));
+  QObject::connect(this->menuThreeOverThreeQuantitative, SIGNAL(triggered(QAction*)),
                    q, SLOT(onLayoutActionTriggered(QAction*)));
 
   this->ViewToolBar->addWidget(layoutButton);
@@ -1027,22 +1049,39 @@ void qSlicerAppMainWindow::on_HelpKeyboardShortcutsAction_triggered()
 //---------------------------------------------------------------------------
 void qSlicerAppMainWindow::on_HelpBrowseTutorialsAction_triggered()
 {
-  QDesktopServices::openUrl(QUrl(QString(
-    "http://www.slicer.org/slicerWiki/index.php/Documentation/%1.%2/Training")
-      .arg(Slicer_VERSION_MAJOR).arg(Slicer_VERSION_MINOR)));
+  QString url;
+  if (qSlicerApplication::application()->releaseType() == "Stable")
+    {
+    url = QString("http://www.slicer.org/slicerWiki/index.php/Documentation/%1.%2/Training")
+                    .arg(Slicer_VERSION_MAJOR).arg(Slicer_VERSION_MINOR);
+    }
+  else
+    {
+    url = QString("http://www.slicer.org/slicerWiki/index.php/Documentation/Nightly/Training");
+    }
+  QDesktopServices::openUrl(QUrl(url));
 }
+
 //---------------------------------------------------------------------------
 void qSlicerAppMainWindow::on_HelpInterfaceDocumentationAction_triggered()
 {
-  QDesktopServices::openUrl(QUrl(QString(
-    "http://wiki.slicer.org/slicerWiki/index.php/Documentation/%1.%2")
-      .arg(Slicer_VERSION_MAJOR).arg(Slicer_VERSION_MINOR)));
+  QString url;
+  if (qSlicerApplication::application()->releaseType() == "Stable")
+    {
+    url = QString("http://www.slicer.org/slicerWiki/index.php/Documentation/%1.%2")
+                    .arg(Slicer_VERSION_MAJOR).arg(Slicer_VERSION_MINOR);
+    }
+  else
+    {
+    url = QString("http://www.slicer.org/slicerWiki/index.php/Documentation/Nightly");
+    }
+  QDesktopServices::openUrl(QUrl(url));
 }
 
 //---------------------------------------------------------------------------
 void qSlicerAppMainWindow::on_HelpSlicerPublicationsAction_triggered()
 {
-  QDesktopServices::openUrl(QUrl("http://www.slicer.org/publications"));
+  QDesktopServices::openUrl(QUrl("http://www.spl.harvard.edu/publications/pages/display/?collection=11"));
 }
 
 //---------------------------------------------------------------------------
@@ -1184,14 +1223,18 @@ void qSlicerAppMainWindow::setupMenuActions()
   d->ViewLayoutConventionalAction->setData(vtkMRMLLayoutNode::SlicerLayoutConventionalView);
   d->ViewLayoutConventionalWidescreenAction->setData(vtkMRMLLayoutNode::SlicerLayoutConventionalWidescreenView);
   d->ViewLayoutConventionalQuantitativeAction->setData(vtkMRMLLayoutNode::SlicerLayoutConventionalQuantitativeView);
+  d->ViewLayoutConventionalPlotAction->setData(vtkMRMLLayoutNode::SlicerLayoutConventionalPlotView);
   d->ViewLayoutFourUpAction->setData(vtkMRMLLayoutNode::SlicerLayoutFourUpView);
   d->ViewLayoutFourUpQuantitativeAction->setData(vtkMRMLLayoutNode::SlicerLayoutFourUpQuantitativeView);
+  d->ViewLayoutFourUpPlotAction->setData(vtkMRMLLayoutNode::SlicerLayoutFourUpPlotView);
+  d->ViewLayoutFourUpPlotTableAction->setData(vtkMRMLLayoutNode::SlicerLayoutFourUpPlotTableView);
   d->ViewLayoutFourUpTableAction->setData(vtkMRMLLayoutNode::SlicerLayoutFourUpTableView);
   d->ViewLayoutDual3DAction->setData(vtkMRMLLayoutNode::SlicerLayoutDual3DView);
   d->ViewLayoutTriple3DAction->setData(vtkMRMLLayoutNode::SlicerLayoutTriple3DEndoscopyView);
   d->ViewLayoutOneUp3DAction->setData(vtkMRMLLayoutNode::SlicerLayoutOneUp3DView);
   d->ViewLayout3DTableAction->setData(vtkMRMLLayoutNode::SlicerLayout3DTableView);
   d->ViewLayoutOneUpQuantitativeAction->setData(vtkMRMLLayoutNode::SlicerLayoutOneUpQuantitativeView);
+  d->ViewLayoutOneUpPlotAction->setData(vtkMRMLLayoutNode::SlicerLayoutOneUpPlotView);
   d->ViewLayoutOneUpRedSliceAction->setData(vtkMRMLLayoutNode::SlicerLayoutOneUpRedSliceView);
   d->ViewLayoutOneUpYellowSliceAction->setData(vtkMRMLLayoutNode::SlicerLayoutOneUpYellowSliceView);
   d->ViewLayoutOneUpGreenSliceAction->setData(vtkMRMLLayoutNode::SlicerLayoutOneUpGreenSliceView);
@@ -1202,6 +1245,7 @@ void qSlicerAppMainWindow::setupMenuActions()
   d->ViewLayoutCompareGridAction->setData(vtkMRMLLayoutNode::SlicerLayoutCompareGridView);
   d->ViewLayoutThreeOverThreeAction->setData(vtkMRMLLayoutNode::SlicerLayoutThreeOverThreeView);
   d->ViewLayoutThreeOverThreeQuantitativeAction->setData(vtkMRMLLayoutNode::SlicerLayoutThreeOverThreeQuantitativeView);
+  d->ViewLayoutThreeOverThreePlotAction->setData(vtkMRMLLayoutNode::SlicerLayoutThreeOverThreePlotView);
   d->ViewLayoutFourOverFourAction->setData(vtkMRMLLayoutNode::SlicerLayoutFourOverFourView);
   d->ViewLayoutTwoOverTwoAction->setData(vtkMRMLLayoutNode::SlicerLayoutTwoOverTwoView);
   d->ViewLayoutSideBySideAction->setData(vtkMRMLLayoutNode::SlicerLayoutSideBySideView);
@@ -1252,9 +1296,6 @@ void qSlicerAppMainWindow::setupMenuActions()
     app->revisionUserSettings()->value("Extensions/ManagerEnabled").toBool());
 #else
   d->ViewExtensionsManagerAction->setVisible(false);
-#endif
-#ifndef Slicer_USE_PYTHONQT
-  d->WindowPythonInteractorAction->setVisible(false);
 #endif
 
 #if defined Slicer_USE_QtTesting && defined Slicer_BUILD_CLI_SUPPORT
@@ -1474,6 +1515,42 @@ void qSlicerAppMainWindow::onLayoutActionTriggered(QAction* action)
       }
     }
 
+  foreach(QAction* maction, d->menuConventionalQuantitative->actions())
+    {
+    if (action->text() == maction->text())
+      {
+      found = true;
+      break;
+      }
+    }
+
+  foreach(QAction* maction, d->menuFourUpQuantitative->actions())
+    {
+    if (action->text() == maction->text())
+      {
+      found = true;
+      break;
+      }
+    }
+
+  foreach(QAction* maction, d->menuOneUpQuantitative->actions())
+    {
+    if (action->text() == maction->text())
+      {
+      found = true;
+      break;
+      }
+    }
+
+  foreach(QAction* maction, d->menuThreeOverThreeQuantitative->actions())
+    {
+    if (action->text() == maction->text())
+      {
+      found = true;
+      break;
+      }
+    }
+
   if (found)
     {
     this->setLayout(action->data().toInt());
@@ -1530,6 +1607,38 @@ void qSlicerAppMainWindow::onLayoutChanged(int layout)
       action->trigger();
       }
     }
+
+  foreach(QAction* action, d->menuConventionalQuantitative->actions())
+    {
+    if (action->data().toInt() == layout)
+      {
+      action->trigger();
+      }
+    }
+
+  foreach(QAction* action, d->menuFourUpQuantitative->actions())
+    {
+    if (action->data().toInt() == layout)
+      {
+      action->trigger();
+      }
+    }
+
+  foreach(QAction* action, d->menuOneUpQuantitative->actions())
+    {
+    if (action->data().toInt() == layout)
+      {
+      action->trigger();
+      }
+    }
+
+  foreach(QAction* action, d->menuThreeOverThreeQuantitative->actions())
+    {
+    if (action->data().toInt() == layout)
+      {
+      action->trigger();
+      }
+    }
 }
 
 //---------------------------------------------------------------------------
@@ -1572,6 +1681,7 @@ bool qSlicerAppMainWindow::eventFilter(QObject* object, QEvent* event)
       d->setErrorLogIconHighlighted(false);
       }
     }
+#ifdef Slicer_USE_PYTHONQT
   if (object == this->pythonConsole())
     {
     if (event->type() == QEvent::Hide)
@@ -1581,5 +1691,6 @@ bool qSlicerAppMainWindow::eventFilter(QObject* object, QEvent* event)
       d->PythonConsoleToggleViewAction->blockSignals(wasBlocked);
       }
     }
+#endif
   return this->Superclass::eventFilter(object, event);
 }

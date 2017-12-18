@@ -95,6 +95,17 @@ set(${target}_INCLUDE_DIRS
   endforeach()
 endif()
 
+get_property(_wrap_hierarchy_targets GLOBAL PROPERTY SLICER_WRAP_HIERARCHY_TARGETS)
+if(_wrap_hierarchy_targets)
+  foreach(target ${_wrap_hierarchy_targets})
+    set(Slicer_WRAP_HIERARCHY_FILES_CONFIG
+"${Slicer_WRAP_HIERARCHY_FILES_CONFIG}
+set(${target}_WRAP_HIERARCHY_FILE
+  \"${${target}_WRAP_HIERARCHY_FILE}\")"
+)
+  endforeach()
+endif()
+
 set(Slicer_Libs_INCLUDE_DIRS_CONFIG ${Slicer_Libs_INCLUDE_DIRS})
 set(Slicer_Base_INCLUDE_DIRS_CONFIG ${Slicer_Base_INCLUDE_DIRS})
 
@@ -108,6 +119,7 @@ set(RemoteIO_INCLUDE_DIRS_CONFIG ${RemoteIO_INCLUDE_DIRS})
 set(vtkTeem_INCLUDE_DIRS_CONFIG ${vtkTeem_INCLUDE_DIRS})
 set(vtkAddon_INCLUDE_DIRS_CONFIG ${vtkAddon_INCLUDE_DIRS})
 set(vtkITK_INCLUDE_DIRS_CONFIG ${vtkITK_INCLUDE_DIRS})
+set(vtkSegmentationCore_INCLUDE_DIRS_CONFIG ${vtkSegmentationCore_INCLUDE_DIRS})
 
 # Note: For sake of simplification, the macro 'slicer_config_set_ep' is not invoked conditionally, if
 # the configured 'value' parameter is an empty string, the macro 'slicer_config_set_ep' is a no-op.
@@ -131,6 +143,10 @@ set(Slicer_EP_COMPONENT_VARS_CONFIG
 # List all required external project
 set(Slicer_EXTERNAL_PROJECTS_CONFIG CTK CTKAppLauncherLib ITK CURL Teem VTK RapidJSON)
 set(Slicer_EXTERNAL_PROJECTS_NO_USEFILE_CONFIG CURL CTKAppLauncherLib RapidJSON)
+if(Slicer_USE_CTKAPPLAUNCHER)
+  list(APPEND Slicer_EXTERNAL_PROJECTS_CONFIG CTKAppLauncher)
+  list(APPEND Slicer_EXTERNAL_PROJECTS_NO_USEFILE_CONFIG CTKAppLauncher)
+endif()
 if(Slicer_USE_QtTesting)
   list(APPEND Slicer_EXTERNAL_PROJECTS_CONFIG QtTesting)
   list(APPEND Slicer_EXTERNAL_PROJECTS_NO_USEFILE_CONFIG QtTesting)

@@ -20,6 +20,7 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
     super(DICOMScalarVolumePluginClass,self).__init__()
     self.loadType = "Scalar Volume"
     self.epsilon = epsilon
+    self.acquisitionModeling = None
     self.defaultStudyID = 'SLICER10001' #TODO: What should be the new study ID?
 
     self.tags['seriesDescription'] = "0008,103e"
@@ -55,17 +56,44 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
     by the DICOM module.
     """
     formLayout = qt.QFormLayout(parent)
+
     readersComboBox = qt.QComboBox()
     for approach in DICOMScalarVolumePluginClass.readerApproaches():
       readersComboBox.addItem(approach)
-
-    readersComboBox.toolTip = "Preferred back end.  Archetype was used by default in Slicer before June of 2017.  Change this setting if data that previously loaded stops working (and report an issue)."
-
+    readersComboBox.toolTip = ("Preferred back end.  Archetype was used by default in Slicer before June of 2017."
+      "Change this setting if data that previously loaded stops working (and report an issue).")
     formLayout.addRow("DICOM reader approach:", readersComboBox)
-
     panel.registerProperty(
       "DICOM/ScalarVolume/ReaderApproach", readersComboBox,
       "currentIndex", str(qt.SIGNAL("currentIndexChanged(int)")))
+
+    importFormatsComboBox = ctk.ctkComboBox()
+    importFormatsComboBox.toolTip = ("Enable adding non-linear transform to regularize images acquired irregular geometry:"
+      " non-rectilinear grid (such as tilted gantry CT acquisitions) and non-uniform slice spacing."
+      " If no regularization is applied then image may appear distorted if it was acquired with irregular geometry.")
+    importFormatsComboBox.addItem("default (none)", "default")
+    importFormatsComboBox.addItem("none", "none")
+    importFormatsComboBox.addItem("apply regularization transform", "transform")
+     # in the future additional option, such as "resample" may be added
+    importFormatsComboBox.currentIndex = 0
+    formLayout.addRow("Acquisition geometry regularization:", importFormatsComboBox)
+    panel.registerProperty(
+      "DICOM/ScalarVolume/AcquisitionGeometryRegularization", importFormatsComboBox,
+      "currentUserDataAsString", str(qt.SIGNAL("currentIndexChanged(int)")),
+      "DICOM examination settings", ctk.ctkSettingsPanel.OptionRequireRestart)
+    # DICOM examination settings are cached so we need to restart to make sure changes take effect
+
+    allowLoadingByTimeCheckBox = qt.QCheckBox()
+    allowLoadingByTimeCheckBox.toolTip = ("Offer loading of individual slices or group of slices"
+      " that were acquired at a specific time (content or trigger time)."
+      " If this option is enabled then a large number of loadable items may be displayed in the Advanced section of DICOM browser.")
+    formLayout.addRow("Allow loading subseries by time:", allowLoadingByTimeCheckBox)
+    allowLoadingByTimeMapper = ctk.ctkBooleanMapper(allowLoadingByTimeCheckBox, "checked", str(qt.SIGNAL("toggled(bool)")))
+    panel.registerProperty(
+      "DICOM/ScalarVolume/AllowLoadingByTime", allowLoadingByTimeMapper,
+      "valueAsInt", str(qt.SIGNAL("valueAsIntChanged(int)")),
+      "DICOM examination settings", ctk.ctkSettingsPanel.OptionRequireRestart)
+    # DICOM examination settings are cached so we need to restart to make sure changes take effect
 
   @staticmethod
   def compareVolumeNodes(volumeNode1,volumeNode2):
@@ -86,6 +114,14 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
     if not numpy.all(array1 == array2):
       comparison += "Pixel data mismatch\n"
     return comparison
+
+  def acquisitionGeometryRegularizationEnabled(self):
+    settings = qt.QSettings()
+    return (settings.value("DICOM/ScalarVolume/AcquisitionGeometryRegularization", "default") == "transform")
+
+  def allowLoadingByTime(self):
+    settings = qt.QSettings()
+    return (int(settings.value("DICOM/ScalarVolume/AllowLoadingByTime", "0")) != 0)
 
   def examineForImport(self,fileLists):
     """ Returns a sorted list of DICOMLoadable instances
@@ -132,11 +168,13 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
     # make subseries volumes based on tag differences
     subseriesTags = [
         "seriesInstanceUID",
-        "contentTime",
-        "triggerTime",
-        "diffusionGradientOrientation",
         "imageOrientationPatient",
+        "diffusionGradientOrientation",
     ]
+
+    if self.allowLoadingByTime():
+      subseriesTags.append("contentTime")
+      subseriesTags.append("triggerTime")
 
     #
     # first, look for subseries within this series
@@ -178,12 +216,14 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
     #
     for tag in subseriesTags:
       if len(subseriesValues[tag]) > 1:
-        for value in subseriesValues[tag]:
+        for valueIndex, value in enumerate(subseriesValues[tag]):
           # default loadable includes all files for series
           loadable = DICOMLoadable()
           loadable.files = subseriesFiles[tag,value]
-          loadable.name = seriesName + " for %s of %s" % (tag,value)
-          loadable.tooltip = "%d files, first file: %s" % (len(loadable.files), loadable.files[0])
+          # value can be a long string (and it will be used for generating node name)
+          # therefore use just an index instead
+          loadable.name = seriesName + " - %s %d" % (tag,valueIndex+1)
+          loadable.tooltip = "%d files, grouped by %s = %s. First file: %s" % (len(loadable.files), tag, value, loadable.files[0])
           loadable.selected = False
           loadables.append(loadable)
 
@@ -246,6 +286,8 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
       scanAxis = self.cross(x,y)
       scanOrigin = [float(zz) for zz in ref[self.tags['position']].split('\\')]
 
+      acquisitionGeometryRegularizationEnabled = self.acquisitionGeometryRegularizationEnabled()
+
       #
       # for each file in series, calculate the distance along
       # the scan axis, sort files by this
@@ -291,7 +333,12 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
             spaceError = spacingN - spacing0
             if abs(spaceError) > self.epsilon:
               spaceWarnings += 1
-              loadable.warning += "Images are not equally spaced (a difference of %g in spacings was detected).  Slicer will load this series as if it had a spacing of %g.  Please use caution.  " % (spaceError, spacing0)
+              loadable.warning += "Images are not equally spaced (a difference of %g vs %g in spacings was detected)." % (spaceError, spacing0)
+              if acquisitionGeometryRegularizationEnabled:
+                loadable.warning += "  Slicer apply a transform to this series trying to regularize the volume.  Please use caution.  "
+              else:
+                loadable.warning += ("  If loaded image appears distorted, enable 'Acquisition geometry regularization'"
+                  " in Application settins / DICOM / DICOMScalarVolumePlugin.  Please use caution.  ")
               break
             n += 1
 
@@ -401,6 +448,9 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
     return(volumeNode)
 
   def setVolumeNodeProperties(self,volumeNode,loadable):
+    """After the scalar volume has been loaded, populate the node
+    attributes and display node with values extracted from the dicom instances
+    """
     if volumeNode:
       #
       # create subject hierarchy items for the loaded series
@@ -431,8 +481,8 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
       #
       # apply window/level from DICOM if available (the first pair that is found)
       #   Note: There can be multiple presets (multiplicity 1-n) in the standard [1]. We have
-      #   a way to put these into the display node [2], but currently the slicer4 Volumes GUI
-      #   does not expose this (the slicer3 one did).
+      #   a way to put these into the display node [2], so they can be selected in the Volumes
+      #   module.
       #   [1] http://medical.nema.org/medical/dicom/current/output/html/part06.html
       #   [2] https://github.com/Slicer/Slicer/blob/3bfa2fc2b310d41c09b7a9e8f8f6c4f43d3bd1e2/Libs/MRML/Core/vtkMRMLScalarVolumeDisplayNode.h#L172
       #
@@ -471,9 +521,11 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
   def load(self,loadable,readerApproach=None):
     """Load the select as a scalar volume using desired approach
     """
+    # first, determine which reader approach the user prefers
     if not readerApproach:
       readerIndex = slicer.util.settingsValue('DICOM/ScalarVolume/ReaderApproach', 0, converter=int)
       readerApproach = DICOMScalarVolumePluginClass.readerApproaches()[readerIndex]
+    # second, try to load with the selected approach
     if readerApproach == "Archetype":
       volumeNode = self.loadFilesWithArchetype(loadable.files, loadable.name)
     elif readerApproach == "GDCM with DCMTK fallback":
@@ -482,7 +534,18 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
         volumeNode = self.loadFilesWithSeriesReader("DCMTK", loadable.files, loadable.name)
     else:
       volumeNode = self.loadFilesWithSeriesReader(readerApproach, loadable.files, loadable.name)
+    # third, transfer data from the dicom instances into the appropriate Slicer data containers
     self.setVolumeNodeProperties(volumeNode, loadable)
+
+    # examine the loaded volume and if needed create a new transform
+    # that makes the loaded volume match the DICOM coordinates of
+    # the individual frames.  Save the class instance so external
+    # code such as the DICOMReaders test can introspect to validate.
+
+    self.acquisitionModeling = self.AcquisitionModeling()
+    self.acquisitionModeling.createAcquisitionTransform(volumeNode,
+      addAcquisitionTransformIfNeeded=self.acquisitionGeometryRegularizationEnabled())
+
     return volumeNode
 
   def examineForExport(self,subjectHierarchyItemID):
@@ -576,6 +639,166 @@ class DICOMScalarVolumePluginClass(DICOMPlugin):
 
     # Success
     return ""
+
+  class AcquisitionModeling(object):
+    """Code for representing and analyzing acquisition properties in slicer
+    This is an internal class of the DICOMScalarVolumePluginClass so that
+    it can be used here and from within the DICOMReaders test.
+
+    TODO: This code work on legacy single frame DICOM images that have position and orientation
+    flags in each instance (not on multiframe with per-frame positions).
+    """
+
+    def __init__(self,cornerEpsilon=1e-3):
+      """cornerEpsilon sets the threshold for the amount of difference between the
+      vtkITK generated volume geometry vs the DICOM geometry.  Any spatial dimension with
+      a difference larger than cornerEpsilon will trigger the addtion of a grid transform.
+      """
+      self.cornerEpsilon = cornerEpsilon
+
+    def gridTransformFromCorners(self,volumeNode,sourceCorners,targetCorners):
+      """Create a grid transform that maps between the current and the desired corners.
+      """
+      # sanity check
+      columns, rows, slices = volumeNode.GetImageData().GetDimensions()
+      cornerShape = (slices, 2, 2, 3)
+      if not (sourceCorners.shape == cornerShape and targetCorners.shape == cornerShape):
+        raise Exception("Corner shapes do not match volume dimensions %s, %s, %s" %
+                          (sourceCorners.shape, targetCorners.shape, cornerShape))
+
+      # create the grid transform node
+      gridTransform = slicer.vtkMRMLGridTransformNode()
+      gridTransform.SetName(slicer.mrmlScene.GenerateUniqueName(volumeNode.GetName()+' acquisition transform'))
+      slicer.mrmlScene.AddNode(gridTransform)
+
+      # place grid transform in the same subject hierarchy folder as the volume node
+      shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+      volumeParentItemId = shNode.GetItemParent(shNode.GetItemByDataNode(volumeNode))
+      shNode.SetItemParent(shNode.GetItemByDataNode(gridTransform), volumeParentItemId)
+
+      # create a grid transform with one vector at the corner of each slice
+      # the transform is in the same space and orientation as the volume node
+      gridImage = vtk.vtkImageData()
+      gridImage.SetOrigin(*volumeNode.GetOrigin())
+      gridImage.SetDimensions(2, 2, slices)
+      sourceSpacing = volumeNode.GetSpacing()
+      gridImage.SetSpacing(sourceSpacing[0] * columns, sourceSpacing[1] * rows, sourceSpacing[2])
+      gridImage.AllocateScalars(vtk.VTK_DOUBLE, 3)
+      transform = slicer.vtkOrientedGridTransform()
+      directionMatrix = vtk.vtkMatrix4x4()
+      volumeNode.GetIJKToRASDirectionMatrix(directionMatrix)
+      transform.SetGridDirectionMatrix(directionMatrix)
+      transform.SetDisplacementGridData(gridImage)
+      gridTransform.SetAndObserveTransformToParent(transform)
+      volumeNode.SetAndObserveTransformNodeID(gridTransform.GetID())
+
+      # populate the grid so that each corner of each slice
+      # is mapped from the source corner to the target corner
+      displacements = slicer.util.arrayFromGridTransform(gridTransform)
+      for sliceIndex in range(slices):
+        for row in range(2):
+          for column in range(2):
+            displacements[sliceIndex][row][column] = targetCorners[sliceIndex][row][column] - sourceCorners[sliceIndex][row][column]
+
+    def sliceCornersFromDICOM(self,volumeNode):
+      """Calculate the RAS position of each of the four corners of each
+      slice of a volume node based on the dicom headers
+
+      Note: PixelSpacing is row spacing followed by column spacing [1] (i.e. vertical then horizontal)
+      while ImageOrientationPatient is row cosines then column cosines [2] (i.e. horizontal then vertical).
+      [1] http://dicom.nema.org/medical/dicom/current/output/html/part03.html#sect_10.7.1.1
+      [2] http://dicom.nema.org/medical/dicom/current/output/html/part03.html#sect_C.7.6.2
+      """
+      spacingTag = "0028,0030"
+      positionTag = "0020,0032"
+      orientationTag = "0020,0037"
+
+      columns, rows, slices = volumeNode.GetImageData().GetDimensions()
+      corners = numpy.zeros(shape=[slices,2,2,3])
+      uids = volumeNode.GetAttribute('DICOM.instanceUIDs').split()
+      for sliceIndex in range(slices):
+        uid = uids[sliceIndex]
+        # get slice geometry from instance
+        positionString = slicer.dicomDatabase.instanceValue(uid, positionTag)
+        orientationString = slicer.dicomDatabase.instanceValue(uid, orientationTag)
+        spacingString = slicer.dicomDatabase.instanceValue(uid, spacingTag)
+        if positionString == "" or orientationString == "" or spacingString == "":
+          logging.warning('No geomtry information available for DICOM data, skipping corner calculations')
+          return None
+
+        position = numpy.array(map(float, positionString.split('\\')))
+        orientation = map(float, orientationString.split('\\'))
+        rowOrientation = numpy.array(orientation[:3])
+        columnOrientation = numpy.array(orientation[3:])
+        spacing = numpy.array(map(float, spacingString.split('\\')))
+        # map from LPS to RAS
+        lpsToRAS = numpy.array([-1,-1,1])
+        position *= lpsToRAS
+        rowOrientation *= lpsToRAS
+        columnOrientation *= lpsToRAS
+        rowVector = columns * spacing[1] * rowOrientation # dicom PixelSpacing is between rows first, then columns
+        columnVector = rows * spacing[0] * columnOrientation
+        # apply the transform to the four corners
+        for column in range(2):
+          for row in range(2):
+            corners[sliceIndex][row][column] = position
+            corners[sliceIndex][row][column] += column * rowVector
+            corners[sliceIndex][row][column] += row * columnVector
+      return corners
+
+    def sliceCornersFromIJKToRAS(self,volumeNode):
+      """Calculate the RAS position of each of the four corners of each
+      slice of a volume node based on the ijkToRAS matrix of the volume node
+      """
+      ijkToRAS = vtk.vtkMatrix4x4()
+      volumeNode.GetIJKToRASMatrix(ijkToRAS)
+      columns, rows, slices = volumeNode.GetImageData().GetDimensions()
+      corners = numpy.zeros(shape=[slices,2,2,3])
+      for sliceIndex in range(slices):
+        for column in range(2):
+          for row in range(2):
+            corners[sliceIndex][row][column] = numpy.array(ijkToRAS.MultiplyPoint([column * columns, row * rows, sliceIndex, 1])[:3])
+      return corners
+
+    def cornersToWorld(self,volumeNode,corners):
+      """Map corners through the volumeNodes transform to world
+      This can be used to confirm that an acquisition transform has correctly
+      mapped the slice corners to match the dicom acquisition.
+      """
+      columns, rows, slices = volumeNode.GetImageData().GetDimensions()
+      worldCorners = numpy.zeros(shape=[slices,2,2,3])
+      for slice in range(slices):
+        for row in range(2):
+          for column in range(2):
+            volumeNode.TransformPointToWorld(corners[slice,row,column], worldCorners[slice,row,column])
+      return worldCorners
+
+    def createAcquisitionTransform(self, volumeNode, addAcquisitionTransformIfNeeded = True):
+      """Creates the actual transform if needed.
+      Slice corners are cached for inpection by tests
+      """
+      self.originalCorners = self.sliceCornersFromIJKToRAS(volumeNode)
+      self.targetCorners = self.sliceCornersFromDICOM(volumeNode)
+      if self.originalCorners is None or self.targetCorners is None:
+        # can't create transform without corner information
+        return
+      maxError = (abs(self.originalCorners - self.targetCorners)).max()
+
+      if maxError > self.cornerEpsilon:
+        warningText = "Irregular volume geometry detected (maximum error of %g mm is above tolerance threshold of %g mm)." % (maxError, self.cornerEpsilon)
+        if addAcquisitionTransformIfNeeded:
+          logging.warning(warningText + "  Adding acquisition transform to regularize geometry.")
+          self.gridTransformFromCorners(volumeNode, self.originalCorners, self.targetCorners)
+          self.fixedCorners = self.cornersToWorld(volumeNode, self.originalCorners)
+          if not numpy.allclose(self.fixedCorners, self.targetCorners):
+            raise Exception("Acquisition transform didn't fix slice corners!")
+        else:
+          logging.warning(warningText + "  Regularization transform is not added, as the option is disabled.")
+      elif maxError > 0:
+        logging.warning("Irregular volume geometry detected, but maximum error is within tolerance"+
+          " (maximum error of %g mm, tolerance threshold is %g mm)." % (maxError, self.cornerEpsilon))
+
+
 #
 # DICOMScalarVolumePlugin
 #

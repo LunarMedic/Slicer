@@ -40,6 +40,7 @@ qMRMLColorModelPrivate::qMRMLColorModelPrivate(qMRMLColorModel& object)
   this->LabelColumn = 1;
   this->OpacityColumn = 2;
   this->CheckableColumn = -1;
+  this->IsUpdatingWidgetFromMRML = false;
 }
 
 //------------------------------------------------------------------------------
@@ -323,9 +324,17 @@ void qMRMLColorModel::updateNode()
 {
   Q_D(qMRMLColorModel);
 
+  if (d->IsUpdatingWidgetFromMRML)
+    {
+    // Updating widget from MRML is already in progress
+    return;
+    }
+  d->IsUpdatingWidgetFromMRML = true;
+
   if (d->MRMLColorNode == 0)
     {
     this->setRowCount(this->noneEnabled() ? 1 : 0);
+    d->IsUpdatingWidgetFromMRML = false;
     return;
     }
 
@@ -353,6 +362,8 @@ void qMRMLColorModel::updateNode()
   QObject::connect(this, SIGNAL(itemChanged(QStandardItem*)),
                    this, SLOT(onItemChanged(QStandardItem*)),
                    Qt::UniqueConnection);
+
+  d->IsUpdatingWidgetFromMRML = false;
 }
 
 //------------------------------------------------------------------------------
@@ -364,13 +375,13 @@ void qMRMLColorModel::updateItemFromColor(QStandardItem* item, int color, int co
     return;
     }
   item->setData(color, qMRMLColorModel::ColorEntryRole);
-  double rgba[4] = {0.,0.,0.,1.};
 
   QString colorName = d->MRMLColorNode->GetNamesInitialised() ?
     d->MRMLColorNode->GetColorName(color) : "";
   if (column == d->ColorColumn)
     {
     QPixmap pixmap;
+    double rgba[4] = { 0., 0., 0., 1. };
     const bool validColor = d->MRMLColorNode->GetColor(color, rgba);
     if (validColor)
       {
@@ -399,6 +410,8 @@ void qMRMLColorModel::updateItemFromColor(QStandardItem* item, int color, int co
     }
   if (column == d->OpacityColumn)
     {
+    double rgba[4] = { 0., 0., 0., 1. };
+    d->MRMLColorNode->GetColor(color, rgba);
     item->setData(QString::number(rgba[3],'f',2), Qt::DisplayRole);
     }
   if (column == d->CheckableColumn)

@@ -2,7 +2,7 @@
 set(proj ITKv4)
 
 # Set dependency list
-set(${proj}_DEPENDENCIES "zlib" "VTKv8")
+set(${proj}_DEPENDENCIES "zlib" "VTKv9")
 if(Slicer_BUILD_DICOM_SUPPORT)
   list(APPEND ${proj}_DEPENDENCIES DCMTK)
 endif()
@@ -42,9 +42,10 @@ if(NOT DEFINED ITK_DIR AND NOT ${CMAKE_PROJECT_NAME}_USE_SYSTEM_${proj})
   # * Slicer patches for CMP0042
   # * MINC patch to support building using redhat devtoolset 2
   # * fix DCMTK imageIO orientation bug
+  # * Support color images (RGB/RGBA) with DCMTK. See #4454
   ExternalProject_SetIfNotDefined(
     ${CMAKE_PROJECT_NAME}_${proj}_GIT_TAG
-    "c390a4e7d571802c6e7f554a9e928c3d2de4fd07" # slicer-v4.12.0-2017-05-09-2d63918
+    "9ab5fb62184e1e41982c1eef6932983c6e62940a" # slicer-v4.12.0-2017-05-09-2d63918
     QUIET
     )
 
@@ -87,12 +88,15 @@ if(NOT DEFINED ITK_DIR AND NOT ${CMAKE_PROJECT_NAME}_USE_SYSTEM_${proj})
       )
   endif()
 
+  set(EP_SOURCE_DIR ${CMAKE_BINARY_DIR}/${proj})
+  set(EP_BINARY_DIR ${CMAKE_BINARY_DIR}/${proj}-build)
+
   ExternalProject_Add(${proj}
     ${${proj}_EP_ARGS}
     GIT_REPOSITORY "${${CMAKE_PROJECT_NAME}_${proj}_GIT_REPOSITORY}"
     GIT_TAG "${${CMAKE_PROJECT_NAME}_${proj}_GIT_TAG}"
-    SOURCE_DIR ${proj}
-    BINARY_DIR ${proj}-build
+    SOURCE_DIR ${EP_SOURCE_DIR}
+    BINARY_DIR ${EP_BINARY_DIR}
     CMAKE_CACHE_ARGS
       -DCMAKE_CXX_COMPILER:FILEPATH=${CMAKE_CXX_COMPILER}
       -DCMAKE_CXX_FLAGS:STRING=${ep_common_cxx_flags}

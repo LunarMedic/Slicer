@@ -20,7 +20,9 @@ Version:   $Revision: 1.3 $
 #include <vtkAssignAttribute.h>
 #include <vtkCellData.h>
 #include <vtkCommand.h>
+#include <vtkIntArray.h>
 #include <vtkLookupTable.h>
+#include <vtkNew.h>
 #include <vtkObjectFactory.h>
 #include <vtkPassThrough.h>
 #include <vtkPointData.h>
@@ -33,6 +35,8 @@ Version:   $Revision: 1.3 $
 //----------------------------------------------------------------------------
 vtkMRMLNodeNewMacro(vtkMRMLModelDisplayNode);
 
+static const char* SliceDistanceEncodedProjectionColorNodeReferenceRole = "distanceEncodedProjectionColor";
+
 //-----------------------------------------------------------------------------
 vtkMRMLModelDisplayNode::vtkMRMLModelDisplayNode()
 {
@@ -40,10 +44,15 @@ vtkMRMLModelDisplayNode::vtkMRMLModelDisplayNode()
   this->AssignAttribute = vtkAssignAttribute::New();
   this->ThresholdFilter = vtkThreshold::New();
   this->ThresholdEnabled = false;
+  this->SliceDisplayMode = SliceDisplayIntersection;
 
   // the default behavior for models is to use the scalar range of the data
   // to reset the display scalar range, so use the Data flag
   this->SetScalarRangeFlag(vtkMRMLDisplayNode::UseDataScalarRange);
+
+  vtkNew<vtkIntArray> events;
+  events->InsertNextValue(vtkCommand::ModifiedEvent);
+  this->AddNodeReferenceRole(SliceDistanceEncodedProjectionColorNodeReferenceRole, NULL, events.GetPointer());
 }
 
 //-----------------------------------------------------------------------------
@@ -54,6 +63,69 @@ vtkMRMLModelDisplayNode::~vtkMRMLModelDisplayNode()
   this->ThresholdFilter->Delete();
 }
 
+//----------------------------------------------------------------------------
+void vtkMRMLModelDisplayNode::PrintSelf(ostream& os, vtkIndent indent)
+{
+  Superclass::PrintSelf(os, indent);
+
+  os << indent << "Slice display mode: " << this->GetSliceDisplayModeAsString(this->SliceDisplayMode) << "\n";
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLModelDisplayNode::WriteXML(ostream& of, int nIndent)
+{
+  // Write all attributes not equal to their defaults
+  this->Superclass::WriteXML(of, nIndent);
+
+  if (this->GetSliceDisplayMode() != SliceDisplayIntersection)
+    {
+    of << " sliceDisplayMode=\"" << this->GetSliceDisplayModeAsString(this->GetSliceDisplayMode()) << "\"";
+    }
+}
+
+//----------------------------------------------------------------------------
+void vtkMRMLModelDisplayNode::ReadXMLAttributes(const char** atts)
+{
+  int disabledModify = this->StartModify();
+  this->Superclass::ReadXMLAttributes(atts);
+
+  const char* attName;
+  const char* attValue;
+  while (*atts != NULL)
+    {
+    attName = *(atts++);
+    attValue = *(atts++);
+    if (!strcmp(attName, "sliceDisplayMode"))
+      {
+      int id = this->GetSliceDisplayModeFromString(attValue);
+      if (id < 0)
+        {
+        vtkWarningMacro("Invalid sliceDisplayMode: " << (attValue ? attValue : "(none)"));
+        }
+      else
+        {
+        this->SetSliceDisplayMode(id);
+        }
+      }
+    }
+  this->EndModify(disabledModify);
+}
+
+//----------------------------------------------------------------------------
+// Copy the node's attributes to this object.
+// Does NOT copy: ID, FilePrefix, Name, ID
+void vtkMRMLModelDisplayNode::Copy(vtkMRMLNode *anode)
+{
+  int disabledModify = this->StartModify();
+
+  Superclass::Copy(anode);
+  vtkMRMLModelDisplayNode *node = (vtkMRMLModelDisplayNode *)anode;
+
+  this->SetSliceDisplayMode(node->GetSliceDisplayMode());
+
+  this->EndModify(disabledModify);
+}
+
 //---------------------------------------------------------------------------
 void vtkMRMLModelDisplayNode::ProcessMRMLEvents(vtkObject *caller,
                                                 unsigned long event,
@@ -61,7 +133,14 @@ void vtkMRMLModelDisplayNode::ProcessMRMLEvents(vtkObject *caller,
 {
   this->Superclass::ProcessMRMLEvents(caller, event, callData);
 
-  if (event == vtkCommand::ModifiedEvent)
+  vtkMRMLColorNode* cnode = vtkMRMLColorNode::SafeDownCast(caller);
+  if (cnode != NULL && cnode == this->GetDistanceEncodedProjectionColorNode()
+    && event == vtkCommand::ModifiedEvent)
+    {
+    // Slice distance encoded projection color node changed
+    this->InvokeEvent(vtkCommand::ModifiedEvent, NULL);
+    }
+  else if (event == vtkCommand::ModifiedEvent)
     {
     this->UpdateScalarRange();
     }
@@ -373,4 +452,74 @@ vtkDataArray* vtkMRMLModelDisplayNode::GetActiveScalarArray()
     }
   vtkDataArray *dataArray = attributes->GetArray(this->GetActiveScalarName());
   return dataArray;
+}
+
+//-----------------------------------------------------------
+void vtkMRMLModelDisplayNode::SetSliceDisplayModeToIntersection()
+{
+  this->SetSliceDisplayMode(SliceDisplayIntersection);
+};
+
+//-----------------------------------------------------------
+void vtkMRMLModelDisplayNode::SetSliceDisplayModeToProjection()
+{
+  this->SetSliceDisplayMode(SliceDisplayProjection);
+};
+
+//-----------------------------------------------------------
+void vtkMRMLModelDisplayNode::SetSliceDisplayModeToDistanceEncodedProjection()
+{
+  this->SetSliceDisplayMode(SliceDisplayDistanceEncodedProjection);
+};
+
+//-----------------------------------------------------------
+const char* vtkMRMLModelDisplayNode::GetSliceDisplayModeAsString(int id)
+{
+  switch (id)
+    {
+    case SliceDisplayIntersection: return "intersection";
+    case SliceDisplayProjection: return "projection";
+    case SliceDisplayDistanceEncodedProjection: return "distanceEncodedProjection";
+    default:
+      // invalid id
+      return "";
+    }
+}
+
+//-----------------------------------------------------------
+int vtkMRMLModelDisplayNode::GetSliceDisplayModeFromString(const char* name)
+{
+  if (name == NULL)
+    {
+    // invalid name
+    return -1;
+    }
+  for (int i = 0; i<SliceDisplayMode_Last; i++)
+    {
+    if (strcmp(name, GetSliceDisplayModeAsString(i)) == 0)
+      {
+      // found a matching name
+      return i;
+      }
+    }
+  // unknown name
+  return -1;
+}
+
+//-----------------------------------------------------------
+void vtkMRMLModelDisplayNode::SetAndObserveDistanceEncodedProjectionColorNodeID(const char *colorNodeID)
+{
+  this->SetAndObserveNodeReferenceID(SliceDistanceEncodedProjectionColorNodeReferenceRole, colorNodeID);
+}
+
+//-----------------------------------------------------------
+const char* vtkMRMLModelDisplayNode::GetDistanceEncodedProjectionColorNodeID()
+{
+  return this->GetNodeReferenceID(SliceDistanceEncodedProjectionColorNodeReferenceRole);
+}
+
+//-----------------------------------------------------------
+vtkMRMLColorNode* vtkMRMLModelDisplayNode::GetDistanceEncodedProjectionColorNode()
+{
+  return vtkMRMLColorNode::SafeDownCast(this->GetNodeReference(SliceDistanceEncodedProjectionColorNodeReferenceRole));
 }

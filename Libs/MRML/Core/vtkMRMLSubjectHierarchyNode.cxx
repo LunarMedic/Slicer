@@ -58,7 +58,7 @@ class vtkSubjectHierarchyItem : public vtkObject
 public:
   static vtkSubjectHierarchyItem *New();
   vtkTypeMacro(vtkSubjectHierarchyItem, vtkObject);
-  void PrintSelf(ostream& os, vtkIndent indent);
+  void PrintSelf(ostream& os, vtkIndent indent) VTK_OVERRIDE;
   void ReadXMLAttributes(const char** atts);
   void WriteXML(ostream& of, int indent);
   void DeepCopy(vtkSubjectHierarchyItem* item, bool copyChildren=true);
@@ -696,7 +696,7 @@ vtkSubjectHierarchyItem* vtkSubjectHierarchyItem::FindChildByID(vtkIdType itemID
     // No need to look up item ID if it is the invalid ID
     return NULL;
     }
-  
+
   // Try to find item in cache
   std::map<vtkIdType, vtkSubjectHierarchyItem*>::iterator itemIt = vtkSubjectHierarchyItem::ItemCache.find(itemID);
   if (itemIt != vtkSubjectHierarchyItem::ItemCache.end())
@@ -1194,7 +1194,6 @@ void vtkSubjectHierarchyItem::ReparentChildrenToParent()
     }
 
   this->Parent->Modified();
-  this->Modified();
 }
 
 //---------------------------------------------------------------------------
@@ -1388,7 +1387,7 @@ vtkSubjectHierarchyItem* vtkSubjectHierarchyItem::GetAncestorAtLevel(std::string
   while (currentItem && currentItem->Parent)
     {
     currentItem = currentItem->Parent;
-    if ( currentItem 
+    if ( currentItem
       && !currentItem->GetAttribute(vtkMRMLSubjectHierarchyConstants::GetSubjectHierarchyLevelAttributeName()).compare(level))
       {
       // Level found
@@ -2921,6 +2920,71 @@ void vtkMRMLSubjectHierarchyNode::GetItemsReferencedFromItemByDICOM(vtkIdType it
 }
 
 //---------------------------------------------------------------------------
+std::vector<vtkIdType> vtkMRMLSubjectHierarchyNode::GetItemsReferencingItemByDICOM(vtkIdType itemID)
+{
+  std::vector<vtkIdType> referencingItemIDs;
+  vtkSubjectHierarchyItem* item = this->Internal->SceneItem->FindChildByID(itemID);
+  if (!item)
+    {
+    vtkErrorMacro("GetItemsReferencingItemByDICOM: Failed to find non-scene subject hierarchy item by ID " << itemID);
+    return referencingItemIDs;
+    }
+
+  // Get first SOP instance UID
+  std::string uidsString = item->GetUID(vtkMRMLSubjectHierarchyConstants::GetDICOMInstanceUIDName());
+  if (uidsString.empty())
+    {
+    vtkDebugMacro("GetItemsReferencingItemByDICOM: No DICOM UIDs in item with ID " << itemID);
+    return referencingItemIDs;
+    }
+  std::vector<std::string> uidVector;
+  this->DeserializeUIDList(uidsString, uidVector);
+
+  // Find subject hierarchy items containing first SOP instance UID in referenced UIDs attribute
+  std::vector<vtkIdType> allItemIDs;
+  this->Internal->SceneItem->GetAllChildren(allItemIDs);
+  for (std::vector<vtkIdType>::iterator itemIt=allItemIDs.begin(); itemIt!=allItemIDs.end(); ++itemIt)
+    {
+    vtkSubjectHierarchyItem* currentItem =this->Internal->SceneItem->FindChildByID(*itemIt);
+    std::string referencedUids = currentItem->GetAttribute(vtkMRMLSubjectHierarchyConstants::GetDICOMReferencedInstanceUIDsAttributeName());
+    bool referencesUid = false;
+    for (std::vector<std::string>::iterator uidIt=uidVector.begin(); uidIt!=uidVector.end(); ++uidIt)
+      {
+      if (referencedUids.find(*uidIt) != std::string::npos)
+        {
+        referencesUid = true;
+        break;
+        }
+      }
+    if (referencesUid)
+      {
+      // UID is referenced, add referencing item to the list
+      referencingItemIDs.push_back(*itemIt);
+      }
+    }
+
+  return referencingItemIDs;
+}
+
+//---------------------------------------------------------------------------
+void vtkMRMLSubjectHierarchyNode::GetItemsReferencingItemByDICOM(vtkIdType itemID, vtkIdList* referencingIdList)
+{
+  if (!referencingIdList)
+    {
+    vtkErrorMacro("GetItemsReferencingItemByDICOM: Invalid output ID list");
+    return;
+    }
+
+  referencingIdList->Reset();
+  std::vector<vtkIdType> referencingItemIDs = this->GetItemsReferencingItemByDICOM(itemID);
+  std::vector<vtkIdType>::iterator itemIt;
+  for (itemIt=referencingItemIDs.begin(); itemIt!=referencingItemIDs.end(); ++itemIt)
+    {
+    referencingIdList->InsertNextId(*itemIt);
+    }
+}
+
+//---------------------------------------------------------------------------
 std::string vtkMRMLSubjectHierarchyNode::GenerateUniqueItemName(std::string name)
 {
   std::vector<vtkIdType> foundItemIDs;
@@ -3131,7 +3195,7 @@ vtkMRMLSubjectHierarchyNode* vtkMRMLSubjectHierarchyNode::GetSubjectHierarchyNod
   bool wasResolving = firstShNode->Internal->IsResolving;
   firstShNode->Internal->IsResolving = true;
   // Invoke event marking the end of the resolving operation
-  firstShNode->InvokeCustomModifiedEvent(SubjectHierarchyStartResolveEvent);  
+  firstShNode->InvokeCustomModifiedEvent(SubjectHierarchyStartResolveEvent);
 
   // Merge subject hierarchy nodes into the first one found
   std::vector<vtkMRMLSubjectHierarchyNode*> mergedShNodes;
@@ -3179,7 +3243,7 @@ vtkMRMLSubjectHierarchyNode* vtkMRMLSubjectHierarchyNode::GetSubjectHierarchyNod
   // Indicate that resolving unresolved items is underway
   firstShNode->Internal->IsResolving = wasResolving;
   // Invoke event marking the end of the resolving operation
-  firstShNode->InvokeCustomModifiedEvent(SubjectHierarchyEndResolveEvent);  
+  firstShNode->InvokeCustomModifiedEvent(SubjectHierarchyEndResolveEvent);
 
   // Return the first (and now only) subject hierarchy node into which the others were merged
   return firstShNode;

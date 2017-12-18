@@ -12,7 +12,7 @@
 
 // MRMLLogic includes
 #include "vtkMRMLAbstractLogic.h"
-#include "vtkMRMLLogicWin32Header.h"
+#include "vtkMRMLLogicExport.h"
 
 // MRML includes
 class vtkMRMLColorNode;
@@ -178,6 +178,9 @@ public:
 
   /// Return a default color node id for a chart
   virtual const char * GetDefaultChartColorNodeID();
+
+  /// Return a default color node id for a plot
+  virtual const char * GetDefaultPlotColorNodeID();
 
   /// Add a file to the input list Files, checking first for null, duplicates
   void AddColorFile(const char *fileName, std::vector<std::string> *Files);

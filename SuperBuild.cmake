@@ -30,9 +30,10 @@ include(SlicerCheckCMakeHTTPS)
 option(${CMAKE_PROJECT_NAME}_USE_GIT_PROTOCOL "If behind a firewall turn this off to use http instead." ON)
 set(git_protocol "git")
 if(NOT ${CMAKE_PROJECT_NAME}_USE_GIT_PROTOCOL)
-  set(git_protocol "http")
+  set(git_protocol "https")
 
   # Verify that the global git config has been updated with the expected "insteadOf" option.
+  # XXX CMake 3.8: Replace this with use of GIT_CONFIG option provided by ExternalProject
   function(_check_for_required_git_config_insteadof base insteadof)
     execute_process(
       COMMAND ${GIT_EXECUTABLE} config --global --get "url.${base}.insteadof"
@@ -48,13 +49,9 @@ if(NOT ${CMAKE_PROJECT_NAME}_USE_GIT_PROTOCOL)
 "option ${CMAKE_PROJECT_NAME}_USE_GIT_PROTOCOL set to FALSE. "
 "See http://na-mic.org/Mantis/view.php?id=2731"
 "\nYou could do so by running the command:\n"
-"  ${GIT_EXECUTABLE} config --global url.\"${base}\".insteadOf \"${insteadof}\"\n")
+"  ${GIT_EXECUTABLE} config --global url.${base}.insteadOf ${insteadof}\n")
     endif()
   endfunction()
-
-  if("${ITK_VERSION_MAJOR}" LESS 4)
-    _check_for_required_git_config_insteadof("http://itk.org/" "git://itk.org/")
-  endif()
 
 endif()
 
@@ -77,11 +74,30 @@ if(DEFINED CMAKE_CONFIGURATION_TYPES)
   mark_as_superbuild(CMAKE_CONFIGURATION_TYPES)
 endif()
 
-# Provide a mechanism to disable one or more modules.
+if(DEFINED SLICERAPP_LAUNCHER_SPLASHSCREEN_FILE)
+  mark_as_superbuild(SLICERAPP_LAUNCHER_SPLASHSCREEN_FILE)
+endif()
+
+if(DEFINED SLICERAPP_WIN_ICON_FILE)
+  mark_as_superbuild(SLICERAPP_WIN_ICON_FILE)
+endif()
+
+if(DEFINED SLICERAPP_APPLE_ICON_FILE)
+  mark_as_superbuild(SLICERAPP_APPLE_ICON_FILE)
+endif()
+
+if(DEFINED SLICERAPP_LICENSE_FILE)
+  mark_as_superbuild(SLICERAPP_LICENSE_FILE)
+endif()
+
+# Provide a mechanism to disable/enable one or more modules.
 mark_as_superbuild(
   Slicer_QTLOADABLEMODULES_DISABLED:STRING
+  Slicer_QTLOADABLEMODULES_ENABLED:STRING
   Slicer_QTSCRIPTEDMODULES_DISABLED:STRING
+  Slicer_QTSCRIPTEDMODULES_ENABLED:STRING
   Slicer_CLIMODULES_DISABLED:STRING
+  Slicer_CLIMODULES_ENABLED:STRING
   )
 
 #------------------------------------------------------------------------------
@@ -90,7 +106,7 @@ mark_as_superbuild(
 
 set(ITK_EXTERNAL_NAME ITKv4)
 
-set(VTK_EXTERNAL_NAME VTKv8)
+set(VTK_EXTERNAL_NAME VTKv9)
 
 set(Slicer_DEPENDENCIES
   curl
@@ -165,6 +181,17 @@ if(Slicer_USE_PYTHONQT_WITH_TCL AND UNIX)
   list(APPEND Slicer_DEPENDENCIES incrTcl)
 endif()
 
+#------------------------------------------------------------------------------
+# Slicer_ADDITIONAL_DEPENDENCIES, EXTERNAL_PROJECT_ADDITIONAL_DIR
+#------------------------------------------------------------------------------
+
+#
+# Setting the variable Slicer_ADDITIONAL_DEPENDENCIES allows to introduce additional
+# Slicer external project dependencies.
+#
+# Additional external project files are looked up in the EXTERNAL_PROJECT_ADDITIONAL_DIR.
+#
+
 if(DEFINED Slicer_ADDITIONAL_DEPENDENCIES)
   list(APPEND Slicer_DEPENDENCIES ${Slicer_ADDITIONAL_DEPENDENCIES})
 endif()
@@ -192,7 +219,7 @@ list(APPEND Slicer_REMOTE_DEPENDENCIES jqPlot)
 
 Slicer_Remote_Add(OpenIGTLinkIF
   GIT_REPOSITORY ${git_protocol}://github.com/Slicer/OpenIGTLinkIF.git
-  GIT_TAG 06379c2bb8581d54851a1ba299e2daf40cec2c21
+  GIT_TAG 0266aa27ad19a00f8d2b1c04736b9f3d3fb25aee
   OPTION_NAME Slicer_BUILD_OpenIGTLinkIF
   OPTION_DEPENDS "Slicer_BUILD_QTLOADABLEMODULES;Slicer_USE_OpenIGTLink"
   LABELS REMOTE_MODULE
@@ -213,7 +240,7 @@ list_conditional_append(Slicer_BUILD_MultiVolumeExplorer Slicer_REMOTE_DEPENDENC
 
 Slicer_Remote_Add(MultiVolumeImporter
   GIT_REPOSITORY ${git_protocol}://github.com/fedorov/MultiVolumeImporter.git
-  GIT_TAG b2453a8b93a755e440356d408178e899f6b8ee29
+  GIT_TAG a85d4566f0b292773b3f28e06305e2e4d2cf3ca2
   OPTION_NAME Slicer_BUILD_MultiVolumeImporter
   OPTION_DEPENDS "Slicer_BUILD_QTLOADABLEMODULES;Slicer_BUILD_MULTIVOLUME_SUPPORT;Slicer_USE_PYTHONQT"
   LABELS REMOTE_MODULE
@@ -268,11 +295,12 @@ set(BRAINSTools_options
   BRAINS_DEBUG_IMAGE_WRITE:BOOL=OFF
   USE_BRAINSTransformConvert:BOOL=ON
   USE_DWIConvert:BOOL=${Slicer_BUILD_DICOM_SUPPORT} ## Need to figure out library linking
+  USE_BRAINSDemonWarp:BOOL=ON
+  USE_BRAINSRefacer:BOOL=OFF
   )
 Slicer_Remote_Add(BRAINSTools
   GIT_REPOSITORY "${git_protocol}://github.com/Slicer/BRAINSTools.git"
-  # Include patch exporting "BRAINSCommonLib"
-  GIT_TAG "7994f927335f5c9a5376358d164816fd1e5c911e" # master (from 2017-08-04, post v4.7.1)
+  GIT_TAG "c1289e6686f3fd27db2ce0ea19c36e9792e40d2a" # master (from 2017-11-29, post v4.7.1)
   OPTION_NAME Slicer_BUILD_BRAINSTOOLS
   OPTION_DEPENDS "Slicer_BUILD_CLI_SUPPORT;Slicer_BUILD_CLI"
   LABELS REMOTE_MODULE
@@ -281,13 +309,13 @@ Slicer_Remote_Add(BRAINSTools
 list_conditional_append(Slicer_BUILD_BRAINSTOOLS Slicer_REMOTE_DEPENDENCIES BRAINSTools)
 if(Slicer_BUILD_BRAINSTOOLS)
   # This is added to SlicerConfig and is useful for extension depending on BRAINSTools
-  set(BRAINSCommonLib_DIR "${CMAKE_BINARY_DIR}/${Slicer_BINARY_INNER_SUBDIR}/Modules/Remote/BRAINSTools/BRAINSCommonLib")
+  set(BRAINSCommonLib_DIR "${Slicer_BINARY_DIR}/${Slicer_BINARY_INNER_SUBDIR}/Modules/Remote/BRAINSTools/BRAINSCommonLib")
   mark_as_superbuild(BRAINSCommonLib_DIR:PATH)
 endif()
 
 Slicer_Remote_Add(EMSegment
   SVN_REPOSITORY "http://svn.slicer.org/Slicer3/branches/Slicer4-EMSegment"
-  SVN_REVISION -r "17138"
+  SVN_REVISION -r "17143"
   OPTION_NAME Slicer_BUILD_EMSegment
   OPTION_DEPENDS "Slicer_BUILD_BRAINSTOOLS;Slicer_BUILD_QTLOADABLEMODULES;Slicer_USE_PYTHONQT_WITH_TCL"
   LABELS REMOTE_MODULE
@@ -322,18 +350,25 @@ list_conditional_append(Slicer_BUILD_CompareVolumes Slicer_REMOTE_DEPENDENCIES C
 
 Slicer_Remote_Add(LandmarkRegistration
   GIT_REPOSITORY "${git_protocol}://github.com/pieper/LandmarkRegistration"
-  GIT_TAG "a8c80bccea13979a98e967ed226a13d123a9c7ac"
+  GIT_TAG "8ff85fc303e84ad4dbf612973532f9982596c236"
   OPTION_NAME Slicer_BUILD_LandmarkRegistration
   OPTION_DEPENDS "Slicer_BUILD_CompareVolumes;Slicer_USE_PYTHONQT"
   LABELS REMOTE_MODULE
   )
 list_conditional_append(Slicer_BUILD_LandmarkRegistration Slicer_REMOTE_DEPENDENCIES LandmarkRegistration)
 
-#-----------------------------------------------------------------------------
-# Define list of additional options used to configure Slicer
+
+#------------------------------------------------------------------------------
+# Slicer_ADDITIONAL_PROJECTS
 #------------------------------------------------------------------------------
 
-# Projects that Slicer needs to download/configure/build/install...
+#
+# List of <proj>_DIR variables that will be passed to the inner build.
+# Then, the variables are:
+# (1) associated with CPACK_INSTALL_CMAKE_PROJECTS in SlicerCPack
+# (2) used to get <proj>_LIBRARY_DIRS and update "libs_path" in SlicerCPackBundleFixup.
+#
+
 list(APPEND Slicer_ADDITIONAL_PROJECTS ${Slicer_ADDITIONAL_DEPENDENCIES})
 if(Slicer_ADDITIONAL_PROJECTS)
   list(REMOVE_DUPLICATES Slicer_ADDITIONAL_PROJECTS)
@@ -344,14 +379,42 @@ if(Slicer_ADDITIONAL_PROJECTS)
   mark_as_superbuild(Slicer_ADDITIONAL_PROJECTS:STRING)
 endif()
 
-include(ListToString)
+#------------------------------------------------------------------------------
+# Process external projects, aggregate variable marked as superbuild and set <proj>_EP_ARGS variable.
+#------------------------------------------------------------------------------
 
 ExternalProject_Include_Dependencies(Slicer DEPENDS_VAR Slicer_DEPENDENCIES)
+
+#------------------------------------------------------------------------------
+# Define list of additional options used to configure Slicer
+#------------------------------------------------------------------------------
 
 set(EXTERNAL_PROJECT_OPTIONAL_ARGS)
 if(WIN32)
   list(APPEND EXTERNAL_PROJECT_OPTIONAL_ARGS -DSlicer_SKIP_ROOT_DIR_MAX_LENGTH_CHECK:BOOL=ON)
 endif()
+
+#------------------------------------------------------------------------------
+# Customizing SlicerApp metadata
+#------------------------------------------------------------------------------
+
+# Configuring Slicer setting these variables allows to overwrite the properties
+# associated with the SlicerApp application.
+
+foreach(name IN ITEMS
+  DESCRIPTION_SUMMARY
+  DESCRIPTION_FILE
+  LAUNCHER_SPLASHSCREEN_FILE
+  APPLE_ICON_FILE
+  WIN_ICON_FILE
+  LICENSE_FILE
+  )
+  if(DEFINED SlicerApp_${name})
+    list(APPEND EXTERNAL_PROJECT_OPTIONAL_ARGS
+      -DSlicerApp_${name}:STRING=${SlicerApp_${name}}
+      )
+  endif()
+endforeach()
 
 #------------------------------------------------------------------------------
 # Slicer_EXTENSION_SOURCE_DIRS
@@ -394,7 +457,7 @@ ExternalProject_Add(${proj}
   ${${proj}_EP_ARGS}
   DEPENDS ${Slicer_DEPENDENCIES} ${Slicer_REMOTE_DEPENDENCIES}
   SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-  BINARY_DIR ${Slicer_BINARY_INNER_SUBDIR}
+  BINARY_DIR ${CMAKE_BINARY_DIR}/${Slicer_BINARY_INNER_SUBDIR}
   DOWNLOAD_COMMAND ""
   UPDATE_COMMAND ""
   CMAKE_CACHE_ARGS
@@ -410,14 +473,8 @@ ExternalProject_Add(${proj}
     -DSlicer_REQUIRED_C_FLAGS:STRING=${Slicer_REQUIRED_C_FLAGS}
     -DSlicer_REQUIRED_CXX_FLAGS:STRING=${Slicer_REQUIRED_CXX_FLAGS}
     -DSlicer_SUPERBUILD:BOOL=OFF
-    -DSlicer_SUPERBUILD_DIR:PATH=${Slicer_BINARY_DIR}
+    -DSlicer_SUPERBUILD_DIR:PATH=${CMAKE_BINARY_DIR}
     -D${Slicer_MAIN_PROJECT}_APPLICATION_NAME:STRING=${${Slicer_MAIN_PROJECT}_APPLICATION_NAME}
-    -D${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_MAJOR:STRING=${${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_MAJOR}
-    -D${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_MINOR:STRING=${${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_MINOR}
-    -D${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_PATCH:STRING=${${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_PATCH}
-    -D${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_TWEAK:STRING=${${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_TWEAK}
-    -D${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_RC:STRING=${${Slicer_MAIN_PROJECT_APPLICATION_NAME}_VERSION_RC}
-    -DSlicer_APPLICATIONS_DIR:PATH=${Slicer_APPLICATIONS_DIR}
     -DSlicer_EXTENSION_SOURCE_DIRS:STRING=${Slicer_EXTENSION_SOURCE_DIRS}
     -DSlicer_EXTENSION_INSTALL_DIRS:STRING=${Slicer_EXTENSION_INSTALL_DIRS}
     -DExternalData_OBJECT_STORES:PATH=${ExternalData_OBJECT_STORES}
@@ -425,22 +482,4 @@ ExternalProject_Add(${proj}
   INSTALL_COMMAND ""
   )
 
-# This custom external project step forces the build and later
-# steps to run whenever a top level build is done...
-#
-# BUILD_ALWAYS flag is available in CMake 3.1 that allows force build
-# of external projects without this workaround. Remove this workaround
-# and use the CMake flag instead, when Slicer's required minimum CMake
-# version will be at least 3.1.
-#
-if(CMAKE_CONFIGURATION_TYPES)
-  set(BUILD_STAMP_FILE "${CMAKE_CURRENT_BINARY_DIR}/${proj}-prefix/src/${proj}-stamp/${CMAKE_CFG_INTDIR}/${proj}-build")
-else()
-  set(BUILD_STAMP_FILE "${CMAKE_CURRENT_BINARY_DIR}/${proj}-prefix/src/${proj}-stamp/${proj}-build")
-endif()
-ExternalProject_Add_Step(${proj} forcebuild
-  COMMAND ${CMAKE_COMMAND} -E remove ${BUILD_STAMP_FILE}
-  COMMENT "Forcing build step for '${proj}'"
-  DEPENDEES build
-  ALWAYS 1
-  )
+ExternalProject_AlwaysConfigure(${proj})
