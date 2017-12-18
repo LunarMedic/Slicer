@@ -330,7 +330,7 @@ void qMRMLLayoutViewFactory::onNodeAdded(vtkObject* scene, vtkObject* node)
 
   Q_UNUSED(scene);
   vtkMRMLAbstractViewNode* viewNode = vtkMRMLAbstractViewNode::SafeDownCast(node);
-  if (viewNode)
+  if (viewNode && !(node->IsA("vtkMRMLVRViewNode")))
     {
     this->onViewNodeAdded(viewNode);
     }

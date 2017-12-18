@@ -620,7 +620,7 @@ void qMRMLLayoutManagerPrivate::onNodeAddedEvent(vtkObject* scene, vtkObject* no
 
   vtkMRMLAbstractViewNode* viewNode =
     vtkMRMLAbstractViewNode::SafeDownCast(node);
-  if (viewNode)
+  if (viewNode && !(node->IsA("vtkMRMLVRViewNode")))
     {
     foreach(qMRMLLayoutViewFactory* mrmlViewFactory, q->mrmlViewFactories())
       {
